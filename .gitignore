@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Local configuration
+mattermost-gate/config.json
+
+# Runtime registry
+mattermost-gate/tmp/
+
+# Audit logs
+mattermost-gate/log/
+
+settings.local.json
+retro/
