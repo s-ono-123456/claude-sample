@@ -1,0 +1,56 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\claude\\.venv\\Scripts\\python.exe C:\\claude\\mattermost-gate\\permissionrequest.py",
+            "shell": "powershell",
+            "statusMessage": "Waiting for Mattermost approval..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\claude\\.venv\\Scripts\\python.exe C:\\claude\\mattermost-gate\\posttooluse.py",
+            "shell": "powershell"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\claude\\.venv\\Scripts\\python.exe C:\\claude\\mattermost-gate\\stop.py",
+            "shell": "powershell"
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\claude\\.venv\\Scripts\\python.exe C:\\claude\\mattermost-gate\\stop.py",
+            "shell": "powershell"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "skill-creator@claude-plugins-official": true
+  }
+}
