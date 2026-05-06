@@ -1,0 +1,11 @@
+{
+  "mattermost_url": "https://your-mm.example.com",
+  "token": "your-bot-or-personal-access-token",
+  "channel_id": "your-channel-id",
+  "timeout_seconds": 300,
+  "poll_interval_seconds": 2,
+  "approve_emoji": "white_check_mark",
+  "deny_emoji": "x",
+  "deny_reply_timeout_seconds": 60,
+  "terminal_emoji": "computer"
+}
