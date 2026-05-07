@@ -1,0 +1,23 @@
+# ── Phase 1: Java / MyBatis ────────────────────────────────────────────
+source_root: sample-app/src/main/java
+mapper_root: sample-app/src/main/resources/mapper
+
+# ── Phase 2: JSP ───────────────────────────────────────────────────────
+jsp_root: sample-app/src/main/webapp
+
+# ── Phase 3: JavaScript ────────────────────────────────────────────────
+# js_root 未指定時は jsp_root 配下を再帰スキャンする
+js_root: sample-app/src/main/webapp
+
+# Spring InternalResourceViewResolver の設定
+view_prefix: /WEB-INF/views/
+view_suffix: .jsp
+
+# Webアプリのコンテキストパス (例: /myapp)  空文字でルートコンテキスト
+context_path: ""
+
+# ── Neo4j接続設定 ────────────────────────────────────────────────────────
+neo4j:
+  uri: bolt://localhost:7687
+  user: neo4j
+  password: password
