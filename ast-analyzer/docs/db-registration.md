@@ -12,12 +12,11 @@
 ```python
 with Neo4jClient(uri, user, password) as neo4j:
     neo4j.create_constraints()
-    neo4j.save_controller(ctrl)
+    neo4j.save_controllers(controllers)
     ...
 ```
 
-内部の `_run()` がクエリ実行の共通口。**1クエリ = 1セッション** で発行される。
-バッチ処理・トランザクションのまとめ実行は行っていない。
+内部の `_run()` がクエリ実行の共通口。1クエリ = 1セッションで発行される。
 
 ```python
 def _run(self, query: str, **params):
@@ -25,43 +24,55 @@ def _run(self, query: str, **params):
         return session.run(query, **params)
 ```
 
----
+バッチ登録には `_run_unwind()` を使う。空リストは自動スキップされる。
 
-## ノード登録パターン: MERGE + SET
-
-全ノード登録は `MERGE`（存在すれば一致、なければ新規作成）+ `SET`（プロパティ上書き）で冪等に書く。
-再実行しても重複ノードは生まれず、プロパティのみ更新される。
-
-```cypher
--- 例: Controller ノード
-MERGE (c:Controller {className: $cn})
-SET c.filePath = $fp, c.baseUrl = $bu
+```python
+def _run_unwind(self, query: str, items: list, **params):
+    if not items:
+        return
+    with self.driver.session() as session:
+        return session.run(query, items=items, **params)
 ```
-
-クラスとメソッドは **2ステップ** に分けて登録する。
-
-```
-1. クラスノードを MERGE
-2. メソッドノードを MERGE（メソッド数分ループ）
-3. HAS_METHOD エッジを MERGE（メソッド数分ループ）
-```
-
-Controller 1クラスあたりのクエリ数: **1 + 2N**（N = メソッド数）
 
 ---
 
-## エッジ登録パターン: MATCH + MATCH + MERGE
+## ノード登録パターン: UNWIND + MERGE + SET
 
-エッジ登録は必ず両端のノードを `MATCH` してから `MERGE` でエッジを作る。
-ノードが存在しない場合は `MATCH` が空振りし、エッジは作られずにエラーにもならない。
+全ノード登録は `UNWIND` でリストを展開し、`MERGE`（冪等）+ `SET`（プロパティ上書き）で書く。
+同一種別のノードを **1クエリ** で一括登録する。
 
 ```cypher
--- 例: Controller → Service の CALLS エッジ
-MATCH (cm:ControllerMethod {id: $cmId})
-MATCH (sm:ServiceMethod    {id: $smId})
+-- 例: 全 Controller ノードを一括登録
+UNWIND $items AS c
+MERGE (ctrl:Controller {className: c.className})
+SET ctrl.filePath = c.filePath, ctrl.baseUrl = c.baseUrl
+```
+
+クラスとメソッドは **3クエリ** で登録する（クラス数・メソッド数に依存しない）。
+
+```
+1. 全クラスノードを UNWIND MERGE
+2. 全メソッドノードを UNWIND MERGE（全クラス分フラット展開）
+3. 全 HAS_METHOD エッジを UNWIND MERGE（m.className で親を辿る）
+```
+
+Controller N クラス × メソッド数合計 M のクエリ数: **3**（旧実装では 1+2M）
+
+---
+
+## エッジ登録パターン: UNWIND + MATCH + MATCH + MERGE
+
+エッジ登録は両端ノードの ID をリストにまとめ、UNWIND で一括 MERGE する。
+
+```cypher
+-- 例: Controller → Service の CALLS エッジ（全ペア一括）
+UNWIND $items AS p
+MATCH (cm:ControllerMethod {id: p.cmId})
+MATCH (sm:ServiceMethod    {id: p.smId})
 MERGE (cm)-[:CALLS]->(sm)
 ```
 
+ノードが存在しない場合は `MATCH` が空振りし、エッジは作られずエラーにもならない。
 このため **ノードを先に全登録してからエッジを登録する** 順序が必須。
 
 ---
@@ -70,48 +81,63 @@ MERGE (cm)-[:CALLS]->(sm)
 
 ```
 [Phase 1 ノード]
-  save_controller()   ─┐
-  save_service()       ├─ 全ノードを先に登録
-  save_dao()           │
-  save_mapper()       ─┘
+  save_controllers()  ─┐
+  save_services()      ├─ 全ノードを先に登録（各3クエリ）
+  save_daos()          │
+  save_mappers()      ─┘ （5クエリ）
 
 [Phase 1 エッジ]
-  link_all()          ─── Controller→Service→DAO の CALLS エッジ
+  link_all()          ─── Controller→Service→DAO の CALLS エッジ（各1クエリ）
 
 [Phase 2 ノード]
-  save_screen()       ─── Screen / Button ノード
+  save_screens()      ─── Screen / Button ノード（3クエリ）
 
 [Phase 2 エッジ]
-  link_button_submits_to()      ─┐
-  link_button_navigates_to()    ─┤─ Button → ControllerMethod エッジ
-  link_controller_returns_view() ─┤─ ControllerMethod → Screen エッジ
-  link_controller_redirects_to() ─┘
-  _build_screen_transitions()  ─── Screen → Screen の TRANSITIONS_TO エッジ
+  link_buttons_submits_to()        ─┐
+  link_buttons_navigates_to()      ─┤─ Button → ControllerMethod エッジ（各1クエリ）
+  link_controllers_returns_view()  ─┤─ ControllerMethod → Screen エッジ（各1クエリ）
+  link_controllers_redirects_to()  ─┘
+  link_screens_transitions()       ─── Screen → Screen の TRANSITIONS_TO（2クエリ: Screenノード MERGE + エッジ）
 
 [Phase 3 ノード]
-  save_js_file()      ─── JsFile / JsFunction / AjaxCall ノード
+  save_js_files()     ─── JsFile / JsFunction / AjaxCall ノード（5クエリ）
 
 [Phase 3 エッジ]
-  link_button_triggers_js()    ─┐
-  link_js_calls_js()           ─┤─ JS 関連エッジ
-  link_ajax_to_controller()    ─┤
-  link_js_navigates_to()       ─┘
+  link_buttons_triggers_js()    ─┐
+  link_js_calls_js_batch()      ─┤─ JS 関連エッジ（各1クエリ、ただし link_ajax_to_controllers は2クエリ）
+  link_ajax_to_controllers()    ─┤
+  link_js_navigates_to_batch()  ─┘
 ```
 
 ---
 
-## save_mapper の READS / WRITES 分岐
+## クエリ数の比較
 
-SQL 種別（SELECT / INSERT / UPDATE / DELETE）に応じてエッジ種別を動的に切り替える。
+| フェーズ | 旧実装（クラス数・メソッド数に比例） | 新実装（固定） |
+|---|---|---|
+| Phase 1 ノード | Σ(1 + 2N) per class | 14 |
+| Phase 1 エッジ | Σ(calls) per method | 2 |
+| Phase 2 ノード | Σ(1 + 2B) per screen | 3 |
+| Phase 2 エッジ | Σ(pairs) | 6 |
+| Phase 3 ノード | Σ(1 + 2F + 2A) per file | 5 |
+| Phase 3 エッジ | Σ(pairs) | 5 |
+| **合計** | **数百〜数千（規模依存）** | **~35（規模非依存）** |
+
+---
+
+## save_mappers の READS / WRITES 分離
+
+SQL 種別（SELECT / INSERT / UPDATE / DELETE）に応じてエッジ種別を分けた **別クエリ** で登録する。
 
 ```python
-rel = "READS" if stmt.sql_type == SqlType.SELECT else "WRITES"
+reads  = [{"sqlId": sid, "table": t} for t in stmt.tables if stmt.sql_type == SqlType.SELECT]
+writes = [{"sqlId": sid, "table": t} for t in stmt.tables if stmt.sql_type != SqlType.SELECT]
 ```
 
-- `SELECT` → `SqlStatement -[READS]-> Table`
-- `INSERT` / `UPDATE` / `DELETE` → `SqlStatement -[WRITES]-> Table`
+- `SELECT` → `SqlStatement -[READS]-> Table`（UNWIND 1クエリ）
+- `INSERT` / `UPDATE` / `DELETE` → `SqlStatement -[WRITES]-> Table`（UNWIND 1クエリ）
 
-`MERGE` ではなく f-string でエッジ種別を埋め込んだクエリを `_run()` に渡している。
+旧実装で使っていた f-string による動的クエリ生成は廃止。
 
 ---
 
@@ -124,27 +150,8 @@ JsFunction -[MAKES_AJAX]-> AjaxCall -[RESOLVES_TO]-> ControllerMethod
 JsFunction -[AJAX_CALLS]->                           ControllerMethod  ← 短絡エッジ
 ```
 
-`AJAX_CALLS` は `AjaxCall` ノードを経由せずに直接 Controller へ辿るための短絡エッジ。
+`link_ajax_to_controllers()` が RESOLVES_TO と AJAX_CALLS を各1クエリ（合計2クエリ）で一括登録する。
 未解決の Ajax は `RESOLVES_TO` を持たないため `unresolved_ajax_calls()` で検出できる。
-
----
-
-## 現状の課題
-
-| 課題 | 内容 |
-|---|---|
-| 1クエリ = 1セッション | ノードやエッジを1件ずつ個別に発行しているため、大規模アプリでは登録が遅くなる |
-| バッチ処理なし | `UNWIND` を使ったリスト一括登録は未実装 |
-
-### 改善案（未実装）
-
-`UNWIND` でリストを渡すことで1クエリで複数ノードを一括登録できる。
-
-```cypher
-UNWIND $methods AS m
-MERGE (cm:ControllerMethod {id: m.id})
-SET cm.name = m.name, cm.url = m.url, cm.httpMethod = m.httpMethod
-```
 
 ---
 
