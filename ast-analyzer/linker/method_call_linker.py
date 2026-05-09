@@ -2,7 +2,7 @@ import logging
 from typing import List
 
 from model.ir import ControllerInfo, ServiceInfo, DaoInfo
-from graph.neo4j_client import Neo4jClient
+from graph.neo4j_client import Neo4jClient, _cm_id, _sm_id, _dm_id
 
 log = logging.getLogger(__name__)
 
@@ -14,7 +14,6 @@ def link_all(
     neo4j: Neo4jClient,
 ):
     """Controller→Service→DAO の呼び出し連鎖エッジをNeo4jに登録する"""
-    # 実装クラス名・インターフェース名の両方で検索できるようにする
     service_map = {s.class_name: s for s in services}
     for s in services:
         for iname in s.interface_names:
@@ -25,7 +24,6 @@ def link_all(
     service_method_names = {
         s.class_name: {m.name for m in s.methods} for s in services
     }
-    # インターフェース名でもメソッド名を引けるようにする
     for s in services:
         for iname in s.interface_names:
             if iname not in service_method_names:
@@ -35,7 +33,7 @@ def link_all(
         d.class_name: {m.name for m in d.methods} for d in daos
     }
 
-    # Controller → Service
+    ctrl_svc_pairs = []
     for ctrl in controllers:
         for cm in ctrl.methods:
             for call in cm.service_calls:
@@ -48,12 +46,14 @@ def link_all(
                 if call.method_name not in service_method_names.get(svc_class, set()):
                     log.debug("ServiceMethod未検出: %s.%s", svc_class, call.method_name)
                     continue
-                # Neo4jに登録済みのImpl名でリンクする
                 impl_class = service_map[svc_class].class_name
-                neo4j.link_controller_to_service(ctrl.class_name, cm, impl_class, call.method_name)
+                ctrl_svc_pairs.append({
+                    "cmId": _cm_id(ctrl.class_name, cm.name, cm.url),
+                    "smId": _sm_id(impl_class, call.method_name),
+                })
                 log.debug("CALLS: %s.%s -> %s.%s", ctrl.class_name, cm.name, svc_class, call.method_name)
 
-    # Service → DAO
+    svc_dao_pairs = []
     for svc in services:
         for sm in svc.methods:
             for call in sm.dao_calls:
@@ -66,5 +66,11 @@ def link_all(
                 if call.method_name not in dao_method_names.get(dao_class, set()):
                     log.debug("DaoMethod未検出: %s.%s", dao_class, call.method_name)
                     continue
-                neo4j.link_service_to_dao(svc.class_name, sm.name, dao_class, call.method_name)
+                svc_dao_pairs.append({
+                    "smId": _sm_id(svc.class_name, sm.name),
+                    "dmId": _dm_id(dao_class, call.method_name),
+                })
                 log.debug("CALLS: %s.%s -> %s.%s", svc.class_name, sm.name, dao_class, call.method_name)
+
+    neo4j.link_controllers_to_services(ctrl_svc_pairs)
+    neo4j.link_services_to_daos(svc_dao_pairs)

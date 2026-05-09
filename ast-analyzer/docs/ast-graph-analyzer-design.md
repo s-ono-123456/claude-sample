@@ -89,16 +89,19 @@ ast-analyzer/
 │   ├── java_controller_parser.py
 │   ├── java_service_parser.py
 │   ├── java_dao_parser.py
-│   └── mybatis_xml_parser.py        # Mapper XML → SQL/Table
+│   ├── mybatis_xml_parser.py        # Mapper XML → SQL/Table
+│   └── utils.py                     # アノテーション値取得・ASTウォーク共通処理
 ├── linker/
 │   ├── url_linker.py                # URL文字列でJSP/JS↔Controller紐付け
 │   ├── method_call_linker.py        # メソッド呼び出し連鎖を解決
-│   └── view_linker.py               # return "viewName" → Screen紐付け
+│   ├── view_linker.py               # return "viewName" → Screen紐付け
+│   └── js_linker.py                 # JS関連リンク解決（Button→JS / Ajax→Controller）
 ├── graph/
 │   ├── schema.py                    # ノード/エッジ定数定義
 │   └── neo4j_client.py              # Neo4j CRUD
-└── model/
-    └── ir.py                        # 中間表現データクラス
+├── model/
+│   └── ir.py                        # 中間表現データクラス
+└── docs/                            # 設計資料
 ```
 
 ---

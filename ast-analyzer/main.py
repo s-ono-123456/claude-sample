@@ -225,14 +225,10 @@ def main(config_path: str, dry_run: bool, phase: int):
 
         # ── Phase 1: ノード & エッジ ──
         log.info("Phase 1: ノードを保存中...")
-        for c in controllers:
-            neo4j.save_controller(c)
-        for s in services:
-            neo4j.save_service(s)
-        for d in daos:
-            neo4j.save_dao(d)
-        for m in mappers:
-            neo4j.save_mapper(m)
+        neo4j.save_controllers(controllers)
+        neo4j.save_services(services)
+        neo4j.save_daos(daos)
+        neo4j.save_mappers(mappers)
 
         log.info("Phase 1: エッジを生成中 (Controller→Service→DAO)...")
         link_all(controllers, services, daos, neo4j)
@@ -243,21 +239,25 @@ def main(config_path: str, dry_run: bool, phase: int):
 
         # ── Phase 2: ノード & エッジ ──
         log.info("Phase 2: Screen/Buttonノードを保存中...")
-        for screen in screens:
-            neo4j.save_screen(screen)
+        neo4j.save_screens(screens)
 
         log.info("Phase 2: URLエッジを生成中 (Button→ControllerMethod)...")
-        for btn, screen, cm, ctrl_class in btn_ctrl_pairs:
-            if btn.button_type == ButtonType.SUBMIT:
-                neo4j.link_button_submits_to(btn, ctrl_class, cm)
-            else:
-                neo4j.link_button_navigates_to(btn, ctrl_class, cm)
+        submits = [
+            (btn, ctrl_class, cm)
+            for btn, _screen, cm, ctrl_class in btn_ctrl_pairs
+            if btn.button_type == ButtonType.SUBMIT
+        ]
+        navigates = [
+            (btn, ctrl_class, cm)
+            for btn, _screen, cm, ctrl_class in btn_ctrl_pairs
+            if btn.button_type != ButtonType.SUBMIT
+        ]
+        neo4j.link_buttons_submits_to(submits)
+        neo4j.link_buttons_navigates_to(navigates)
 
         log.info("Phase 2: Viewエッジを生成中 (ControllerMethod→Screen)...")
-        for ctrl_class, cm, screen in returns_view:
-            neo4j.link_controller_returns_view(ctrl_class, cm, screen)
-        for ctrl_class, cm, screen in redirects_to:
-            neo4j.link_controller_redirects_to(ctrl_class, cm, screen)
+        neo4j.link_controllers_returns_view(returns_view)
+        neo4j.link_controllers_redirects_to(redirects_to)
 
         # TRANSITIONS_TO: Screen→Controller→Screen の連鎖を直接エッジとして追加
         log.info("Phase 2: TRANSITIONS_TOエッジを生成中...")
@@ -269,31 +269,19 @@ def main(config_path: str, dry_run: bool, phase: int):
 
         # ── Phase 3: ノード & エッジ ──
         log.info("Phase 3: JsFile/JsFunction/AjaxCallノードを保存中...")
-        for js_file in js_files:
-            neo4j.save_js_file(js_file)
+        neo4j.save_js_files(js_files)
 
         log.info("Phase 3: Button→JsFunctionエッジを生成中 (TRIGGERS_JS)...")
-        for btn, screen, fn in btn_js_pairs:
-            neo4j.link_button_triggers_js(btn.uid, fn.file_path, fn.name)
+        neo4j.link_buttons_triggers_js(btn_js_pairs)
 
         log.info("Phase 3: JsFunction→JsFunctionエッジを生成中 (CALLS)...")
-        for caller_fn, callee_fn in js_js_pairs:
-            neo4j.link_js_calls_js(
-                caller_fn.file_path, caller_fn.name,
-                callee_fn.file_path, callee_fn.name,
-            )
+        neo4j.link_js_calls_js_batch(js_js_pairs)
 
         log.info("Phase 3: AjaxCall→ControllerMethodエッジを生成中 (AJAX_CALLS)...")
-        for fn, ajax, ctrl, cm in ajax_ctrl_pairs:
-            neo4j.link_ajax_to_controller(
-                fn.file_path, fn.name,
-                ajax.url, ajax.http_method,
-                ctrl.class_name, cm,
-            )
+        neo4j.link_ajax_to_controllers(ajax_ctrl_pairs)
 
         log.info("Phase 3: LocationHref→ControllerMethodエッジを生成中 (NAVIGATES_TO)...")
-        for fn, href, ctrl, cm in href_ctrl_pairs:
-            neo4j.link_js_navigates_to(fn.file_path, fn.name, ctrl.class_name, cm)
+        neo4j.link_js_navigates_to_batch(href_ctrl_pairs)
 
     log.info("=== 完了 ===")
 
@@ -303,7 +291,6 @@ def _build_screen_transitions(neo4j, btn_ctrl_pairs, returns_view, redirects_to)
     Button→ControllerMethod→Screen のパスから Screen→Screen の TRANSITIONS_TO エッジを生成する。
     これにより画面遷移フローをグラフで直接辿れるようにする。
     """
-    # ControllerMethod.id → 遷移先 Screen のマップを構築
     from graph.neo4j_client import _cm_id
     cm_to_screen: dict = {}
     for ctrl_class, cm, screen in returns_view:
@@ -311,16 +298,14 @@ def _build_screen_transitions(neo4j, btn_ctrl_pairs, returns_view, redirects_to)
     for ctrl_class, cm, screen in redirects_to:
         cm_to_screen[_cm_id(ctrl_class, cm.name, cm.url)] = screen
 
-    # 各 Button が属する Screen → 遷移先 Screen
+    pairs = []
     for btn, from_screen, cm, ctrl_class in btn_ctrl_pairs:
         mid = _cm_id(ctrl_class, cm.name, cm.url)
         to_screen = cm_to_screen.get(mid)
         if to_screen and from_screen.path != to_screen.path:
-            neo4j.link_screen_transitions(
-                from_screen.path,
-                to_screen.path,
-                trigger=btn.label,
-            )
+            pairs.append((from_screen.path, to_screen.path, btn.label))
+
+    neo4j.link_screens_transitions(pairs)
 
 
 def cmd_summary(config_path: str):
