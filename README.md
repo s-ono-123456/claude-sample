@@ -1,31 +1,40 @@
-# mattermost-gate
+# Claude Code ツールセット
+
+このリポジトリには以下のツールが含まれています。
+
+- **[mattermost-gate](#mattermost-gate)** — Claude Code の `PermissionRequest` フックとして動作するゲートウェイ。ツール使用の承認を Mattermost 経由でオペレーターが制御する
+- **[ast-analyzer](#ast-analyzer)** — Spring MVC / MyBatis / JSP / JS アプリを AST 解析し、画面〜DB テーブルの呼び出し連鎖と画面遷移を Neo4j グラフ DB に格納するツール
+
+---
+
+## mattermost-gate
 
 Claude Code の `PermissionRequest` フックとして動作し、全ツール使用の承認を Mattermost 経由にルーティングするゲートウェイです。
 Claude Code がツールの実行許可を求めるたびに Mattermost チャンネルへ通知を投稿し、オペレーターが ✅ / ❌ の絵文字リアクションで承認・拒否します。
 
-## 主な機能
+### 主な機能
 
 - **Mattermost 承認フロー** — ツール実行前に Mattermost へ通知。絵文字リアクションで許否を判断
 - **ツール別整形表示** — `Edit`/`Write` は unified diff、`Bash`/`PowerShell` はパイプライン・セミコロン単位で分割表示
 - **AI 事前審査** — `policy.md` に基づき Claude Haiku が `safe` / `risky` / `dangerous` を判定してメッセージに付記
 - **タイムアウト自動 deny** — 設定時間内に反応がなければ自動的に拒否
 
-## 前提条件
+### 前提条件
 
 - Python 3.12 以上
 - [uv](https://docs.astral.sh/uv/)（パッケージ管理）
 - Mattermost サーバーと Bot トークン（または Personal Access Token）
 - Claude Code CLI（AI 事前審査機能を使う場合）
 
-## セットアップ
+### セットアップ
 
-### 1. 依存関係のインストール
+#### 1. 依存関係のインストール
 
 ```powershell
 uv sync
 ```
 
-### 2. 設定ファイルの作成
+#### 2. 設定ファイルの作成
 
 ```powershell
 Copy-Item mattermost-gate\config.json.sample mattermost-gate\config.json
@@ -41,7 +50,7 @@ Copy-Item mattermost-gate\config.json.sample mattermost-gate\config.json
 }
 ```
 
-### 3. Claude Code へのフック登録確認
+#### 3. Claude Code へのフック登録確認
 
 `.claude/settings.json` に以下の設定が含まれていることを確認します（初回セットアップ時のみ）。
 
@@ -65,12 +74,12 @@ Copy-Item mattermost-gate\config.json.sample mattermost-gate\config.json
 }
 ```
 
-### 4.（任意）AI 事前審査ポリシーのカスタマイズ
+#### 4.（任意）AI 事前審査ポリシーのカスタマイズ
 
 `mattermost-gate\policy.md` を編集して、`safe` / `risky` / `dangerous` の判定基準を調整できます。
 ファイルが存在しない場合、AI 事前審査はスキップされます。
 
-## 設定リファレンス
+### 設定リファレンス
 
 `mattermost-gate/config.json` で指定できるフィールド一覧です。
 
@@ -88,9 +97,9 @@ Copy-Item mattermost-gate\config.json.sample mattermost-gate\config.json
 
 `config.json` は `.gitignore` で除外されています。機密情報をコミットしないよう注意してください。
 
-## 動作フロー
+### 動作フロー
 
-### PermissionRequest（ツール実行の承認）
+#### PermissionRequest（ツール実行の承認）
 
 ```
 Claude Code
@@ -112,7 +121,7 @@ stdout に決定 JSON を出力
 Claude Code（allow / deny を受け取る）
 ```
 
-### PostToolUse（ツール実行完了の通知）
+#### PostToolUse（ツール実行完了の通知）
 
 ```
 Claude Code
@@ -125,7 +134,7 @@ Mattermost 投稿に 💻 (terminal_emoji) を付与
     └  registry エントリを削除
 ```
 
-### Stop / PermissionDenied（セッション終了・権限拒否）
+#### Stop / PermissionDenied（セッション終了・権限拒否）
 
 ```
 Claude Code
@@ -138,7 +147,7 @@ stop.py
     └  registry エントリを削除
 ```
 
-## ディレクトリ構成
+### ディレクトリ構成
 
 ```
 mattermost-gate/
@@ -156,7 +165,7 @@ mattermost-gate/
     └── audit.py          # log/audit.jsonl への JSONL 監査ログ
 ```
 
-## 手動テスト
+### 手動テスト
 
 フックを直接実行して動作確認できます。
 
@@ -173,7 +182,7 @@ stdout に以下の形式でレスポンスが返ります。
 {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "allow"}}}
 ```
 
-## AI 事前審査について
+### AI 事前審査について
 
 `mattermost-gate/policy.md` が存在する場合、各リクエストを Claude Haiku で事前審査し、結果を Mattermost メッセージに付記します。
 
@@ -184,3 +193,164 @@ stdout に以下の形式でレスポンスが返ります。
 | `dangerous` | 🚨 | 危険な操作の可能性あり |
 
 事前審査はあくまで参考情報です。最終的な承認・拒否はオペレーターが絵文字リアクションで行います。
+
+---
+
+## ast-analyzer
+
+Spring MVC / MyBatis / JSP / JS で構成された Web アプリケーションを AST 解析し、
+画面から DB テーブルまでの呼び出し連鎖と画面遷移を Neo4j グラフ DB に格納するツールです。
+
+### 主な機能
+
+- **3 フェーズ解析** — Java/MyBatis → JSP → JavaScript を順番に解析し、グラフを構築
+- **呼び出し連鎖の可視化** — 画面ボタン → Controller → Service → DAO → SQL → テーブルまでの全連鎖をグラフで表現
+- **画面遷移の抽出** — フォーム送信・リンク・JS遷移・リダイレクトをまとめて `TRANSITIONS_TO` エッジとして記録
+- **dry-run モード** — Neo4j への書き込みなしで解析結果のみ確認可能
+
+### 前提条件
+
+- Python 3.12 以上 / [uv](https://docs.astral.sh/uv/)（パッケージ管理）
+- Neo4j 5.x（ローカルまたはリモート）
+
+### セットアップ
+
+#### 1. 依存関係のインストール
+
+```powershell
+uv sync
+```
+
+#### 2. 設定ファイルの作成
+
+```powershell
+Copy-Item ast-analyzer\config.yaml.example ast-analyzer\config.yaml
+```
+
+`ast-analyzer\config.yaml` を開き、ソースパスと Neo4j 接続情報を設定します。
+
+```yaml
+source_root: path/to/src/main/java
+mapper_root: path/to/src/main/resources/mapper
+jsp_root:    path/to/src/main/webapp
+neo4j:
+  uri:      bolt://localhost:7687
+  user:     neo4j
+  password: your-password
+```
+
+### 実行方法
+
+```powershell
+# Phase 3 まで全実行（デフォルト）
+.venv\Scripts\python.exe ast-analyzer\main.py --config ast-analyzer\config.yaml
+
+# dry-run: Neo4j 書き込みなし（動作確認に便利）
+.venv\Scripts\python.exe ast-analyzer\main.py --config ast-analyzer\config.yaml --dry-run
+
+# フェーズ指定（1=Java/MyBatis のみ、2=+JSP、3=+JS）
+.venv\Scripts\python.exe ast-analyzer\main.py --config ast-analyzer\config.yaml --phase 2
+
+# グラフ統計と未解決 AjaxCall を表示
+.venv\Scripts\python.exe ast-analyzer\main.py --config ast-analyzer\config.yaml --summary
+```
+
+### 設定リファレンス
+
+`ast-analyzer/config.yaml` で指定できるフィールド一覧です。
+
+| フィールド | 必須 | デフォルト | 説明 |
+|---|---|---|---|
+| `source_root` | ✅ | — | Java ソースルート（`.java` ファイルを再帰スキャン） |
+| `mapper_root` | | `source_root` と同じ | MyBatis mapper XML ルート |
+| `jsp_root` | | — | JSP ファイルルート（Phase 2 以降で使用） |
+| `js_root` | | `jsp_root` と同じ | JS ファイルルート（Phase 3 で使用） |
+| `view_prefix` | | `/WEB-INF/views/` | Spring ViewResolver プレフィックス |
+| `view_suffix` | | `.jsp` | Spring ViewResolver サフィックス |
+| `context_path` | | `""` | Web アプリのコンテキストパス（例: `/app`） |
+| `neo4j.uri` | ✅ | — | Neo4j 接続 URI（例: `bolt://localhost:7687`） |
+| `neo4j.user` | ✅ | — | Neo4j ユーザー名 |
+| `neo4j.password` | ✅ | — | Neo4j パスワード |
+
+`config.yaml` は `.gitignore` で除外されています。機密情報をコミットしないよう注意してください。
+
+### 実行フェーズ
+
+| フェーズ | 解析対象 | 生成ノード / エッジ |
+|---|---|---|
+| Phase 1 | Java (Controller / Service / DAO) + MyBatis XML | Controller, Service, DAO, Mapper, SqlStatement, Table, CALLS, EXECUTES, READS/WRITES |
+| Phase 2 | JSP (Screen / Button) | Screen, Button, CONTAINS, SUBMITS_TO, NAVIGATES_TO, RETURNS_VIEW, REDIRECTS_TO, TRANSITIONS_TO |
+| Phase 3 | JavaScript | JsFile, JsFunction, AjaxCall, TRIGGERS_JS, AJAX_CALLS, NAVIGATES_TO, CALLS |
+
+### グラフスキーマ
+
+```
+Screen           -[CONTAINS]->        Button
+Button           -[TRIGGERS_JS]->     JsFunction
+Button           -[SUBMITS_TO]->      ControllerMethod
+Button           -[NAVIGATES_TO]->    ControllerMethod
+JsFunction       -[AJAX_CALLS]->      ControllerMethod
+JsFunction       -[CALLS]->           JsFunction
+ControllerMethod -[CALLS]->           ServiceMethod
+ControllerMethod -[RETURNS_VIEW]->    Screen
+ControllerMethod -[REDIRECTS_TO]->    Screen
+ServiceMethod    -[CALLS]->           DaoMethod
+DaoMethod        -[EXECUTES]->        SqlStatement
+SqlStatement     -[READS|WRITES]->    Table
+Screen           -[TRANSITIONS_TO]->  Screen
+```
+
+### ディレクトリ構成
+
+```
+ast-analyzer/
+├── config.yaml.sample       # 設定ファイルテンプレート
+├── config.yaml              # 実際の設定（.gitignore 済み）
+├── main.py                  # エントリーポイント
+├── queries.cypher           # 代表 Cypher クエリ集
+├── parsers/
+│   ├── java_controller_parser.py
+│   ├── java_service_parser.py
+│   ├── java_dao_parser.py
+│   ├── mybatis_xml_parser.py
+│   ├── jsp_parser.py
+│   └── js_parser.py
+├── linker/
+│   ├── method_call_linker.py
+│   ├── url_linker.py
+│   ├── view_linker.py
+│   └── js_linker.py
+├── graph/
+│   ├── schema.py
+│   └── neo4j_client.py
+└── model/
+    └── ir.py
+```
+
+### 代表 Cypher クエリ
+
+よく使う分析クエリは `ast-analyzer/queries.cypher` に収録されています。
+
+```cypher
+-- 画面 → ボタン → Controller → Service → DAO → テーブルの全連鎖
+MATCH path = (s:Screen)-[:CONTAINS]->(b:Button)
+  -[:SUBMITS_TO]->(cm:ControllerMethod)
+  -[:CALLS]->(sm:ServiceMethod)
+  -[:CALLS]->(dm:DaoMethod)
+  -[:EXECUTES]->(sql:SqlStatement)
+  -[:READS|WRITES]->(t:Table)
+RETURN path
+
+-- 特定テーブルを参照している画面を逆引き
+MATCH path = (t:Table {name: 'ORDERS'})<-[:READS|WRITES]-(sql:SqlStatement)
+  <-[:EXECUTES]-(dm:DaoMethod)
+  <-[:CALLS]-(sm:ServiceMethod)
+  <-[:CALLS]-(cm:ControllerMethod)
+  <-[:SUBMITS_TO|AJAX_CALLS]-(b)
+  <-[:CONTAINS]-(s:Screen)
+RETURN path
+
+-- 画面遷移フロー（最大 5 ホップ）
+MATCH path = (s:Screen)-[:TRANSITIONS_TO*1..5]->(e:Screen)
+RETURN path
+```
