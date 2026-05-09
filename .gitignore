@@ -20,3 +20,5 @@ mattermost-gate/log/
 
 settings.local.json
 retro/
+
+ast-analyzer/config.yaml

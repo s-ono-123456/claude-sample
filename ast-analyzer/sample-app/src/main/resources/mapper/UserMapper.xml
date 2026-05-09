@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.sampleapp.dao.UserDao">
+
+    <resultMap id="userResultMap" type="com.example.sampleapp.model.User">
+        <id property="id" column="id"/>
+        <result property="username" column="username"/>
+        <result property="email" column="email"/>
+        <result property="role" column="role"/>
+    </resultMap>
+
+    <select id="findByUsername" parameterType="string" resultMap="userResultMap">
+        SELECT id, username, email, role
+        FROM users
+        WHERE username = #{username}
+    </select>
+
+    <select id="findById" parameterType="int" resultMap="userResultMap">
+        SELECT id, username, email, role
+        FROM users
+        WHERE id = #{id}
+    </select>
+
+    <select id="findAll" resultMap="userResultMap">
+        SELECT id, username, email, role
+        FROM users
+        ORDER BY id
+    </select>
+
+    <insert id="insert" parameterType="com.example.sampleapp.model.User"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO users (username, email, role)
+        VALUES (#{username}, #{email}, #{role})
+    </insert>
+
+    <update id="update" parameterType="com.example.sampleapp.model.User">
+        UPDATE users
+        SET email = #{email},
+            role = #{role}
+        WHERE id = #{id}
+    </update>
+
+</mapper>

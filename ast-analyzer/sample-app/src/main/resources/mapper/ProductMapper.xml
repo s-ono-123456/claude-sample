@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.sampleapp.dao.ProductDao">
+
+    <resultMap id="productResultMap" type="com.example.sampleapp.model.Product">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="description" column="description"/>
+        <result property="price" column="price"/>
+        <result property="stock" column="stock"/>
+        <result property="category" column="category"/>
+    </resultMap>
+
+    <select id="findAll" resultMap="productResultMap">
+        SELECT id, name, description, price, stock, category
+        FROM products
+        ORDER BY id
+    </select>
+
+    <select id="findByCategory" parameterType="string" resultMap="productResultMap">
+        SELECT id, name, description, price, stock, category
+        FROM products
+        WHERE category = #{category}
+        ORDER BY id
+    </select>
+
+    <select id="findById" parameterType="int" resultMap="productResultMap">
+        SELECT id, name, description, price, stock, category
+        FROM products
+        WHERE id = #{id}
+    </select>
+
+    <insert id="insert" parameterType="com.example.sampleapp.model.Product"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO products (name, description, price, stock, category)
+        VALUES (#{name}, #{description}, #{price}, #{stock}, #{category})
+    </insert>
+
+    <update id="update" parameterType="com.example.sampleapp.model.Product">
+        UPDATE products
+        SET name = #{name},
+            description = #{description},
+            price = #{price},
+            stock = #{stock},
+            category = #{category}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="delete" parameterType="int">
+        DELETE FROM products
+        WHERE id = #{id}
+    </delete>
+
+    <update id="updateStock">
+        UPDATE products
+        SET stock = stock + #{quantity}
+        WHERE id = #{id}
+    </update>
+
+</mapper>

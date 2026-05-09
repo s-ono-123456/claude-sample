@@ -1,0 +1,6 @@
+javalang==0.13.0
+lxml>=4.9
+neo4j>=5.0
+PyYAML>=6.0
+sqlparse>=0.4
+beautifulsoup4>=4.12
