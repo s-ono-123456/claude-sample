@@ -97,7 +97,7 @@ MERGE (cm)-[:CALLS]->(sm)
   link_buttons_navigates_to()      ─┤─ Button → ControllerMethod エッジ（各1クエリ）
   link_controllers_returns_view()  ─┤─ ControllerMethod → Screen エッジ（各1クエリ）
   link_controllers_redirects_to()  ─┘
-  link_screens_transitions()       ─── Screen → Screen の TRANSITIONS_TO（2クエリ: Screenノード MERGE + エッジ）
+  link_screens_transitions()       ─── Screen → Screen の TRANSITIONS_TO（2クエリ: Screenノード MERGE + エッジ MERGE/SET）
 
 [Phase 3 ノード]
   save_js_files()     ─── JsFile / JsFunction / AjaxCall ノード（5クエリ）
@@ -141,6 +141,24 @@ writes = [{"sqlId": sid, "table": t} for t in stmt.tables if stmt.sql_type != Sq
 
 ---
 
+## TRANSITIONS_TO の登録パターン（condition の扱い）
+
+`condition` は `null` になりうるため、MERGE キーに含めず `SET` で後から設定する。
+
+```cypher
+UNWIND $items AS p
+MATCH (s1:Screen {path: p.fromPath})
+MATCH (s2:Screen {path: p.toPath})
+MERGE (s1)-[r:TRANSITIONS_TO {trigger: p.trigger}]->(s2)
+SET r.condition = p.condition
+```
+
+- `condition` が `null` の場合、`SET` によりプロパティが削除される（Neo4j の仕様）
+- 同一画面への自己ループ（`fromPath == toPath`）も同じパターンで登録される
+- 同一 `(from, to, trigger)` で条件が異なる場合は既存リレーションシップの `condition` が上書きされる
+
+---
+
 ## Ajax 解決の2エッジ構造
 
 Ajax 呼び出しが Controller に解決された場合、エッジを2本登録する。
@@ -175,6 +193,18 @@ MATCH ()-[r]->() RETURN type(r) AS lbl, count(r) AS cnt
   ...
 }
 ```
+
+### `clear_all()`
+
+全ノード・リレーションシップを削除する。`--reset` フラグ付きで `main.py` を実行した際に呼び出される。
+
+```cypher
+MATCH (n) DETACH DELETE n
+```
+
+制約（インデックス）は削除されないため、再実行時に `create_constraints()` で重複警告が出るが動作に影響はない。
+
+---
 
 ### `unresolved_ajax_calls() -> list`
 
