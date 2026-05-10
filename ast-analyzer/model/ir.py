@@ -52,14 +52,21 @@ class MethodCallInfo:
 
 
 @dataclass
+class ConditionalReturn:
+    value: str                   # view名 or "redirect:/path"
+    condition: Optional[str] = None  # None = 無条件 return
+
+
+@dataclass
 class ControllerMethodInfo:
     name: str
     url: str           # base_url + method_url を結合した完全パス
     http_method: HttpMethod
-    return_view: Optional[str] = None   # return "viewName"
-    redirect_to: Optional[str] = None  # return "redirect:/path"
+    return_view: Optional[str] = None   # return "viewName" (view_linker の RETURNS_VIEW 用)
+    redirect_to: Optional[str] = None  # return "redirect:/path" (view_linker の REDIRECTS_TO 用)
     service_calls: List[MethodCallInfo] = field(default_factory=list)
     line: int = 0
+    conditional_returns: List["ConditionalReturn"] = field(default_factory=list)
 
 
 @dataclass
