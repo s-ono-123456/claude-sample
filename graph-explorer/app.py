@@ -45,6 +45,7 @@ def page_screen_transitions():
         key="trans_screen",
     )
     hops = st.sidebar.slider("最大ホップ数", 1, 5, 3, key="trans_hops")
+    show_self_loops = st.sidebar.checkbox("同一画面遷移を表示", value=True, key="trans_self_loops")
 
     with st.spinner("グラフを生成中..."):
         paths = client.get_screen_transitions(selected, hops)
@@ -53,7 +54,7 @@ def page_screen_transitions():
         st.info("選択した画面からの遷移が見つかりませんでした。")
         return
 
-    html = build_pyvis_graph(paths, show_edge_labels=True)
+    html = build_pyvis_graph(paths, show_edge_labels=True, show_self_loops=show_self_loops)
     components.html(html, height=620, scrolling=True)
     st.caption(f"{len(paths)} 本のパスを表示")
 

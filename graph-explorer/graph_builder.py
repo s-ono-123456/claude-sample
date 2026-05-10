@@ -65,7 +65,11 @@ def _color(node: Node) -> str:
     return "#cccccc"
 
 
-def build_pyvis_graph(paths: list, show_edge_labels: bool = True) -> str:
+def build_pyvis_graph(
+    paths: list,
+    show_edge_labels: bool = True,
+    show_self_loops: bool = True,
+) -> str:
     net = Network(height="580px", width="100%", directed=True, bgcolor="#f8f9fa")
     net.set_options(_GRAPH_OPTIONS)
 
@@ -86,6 +90,10 @@ def build_pyvis_graph(paths: list, show_edge_labels: bool = True) -> str:
             seen_nodes.add(start.element_id)
 
         for rel in path.relationships:
+            is_self_loop = rel.start_node.element_id == rel.end_node.element_id
+            if is_self_loop and not show_self_loops:
+                continue
+
             end = rel.end_node
             if end.element_id not in seen_nodes:
                 net.add_node(
@@ -98,16 +106,22 @@ def build_pyvis_graph(paths: list, show_edge_labels: bool = True) -> str:
                 )
                 seen_nodes.add(end.element_id)
 
-            edge_key = (rel.start_node.element_id, rel.end_node.element_id, rel.type)
+            trigger_val = rel.get("trigger") or rel.type
+            condition_val = rel.get("condition")
+            edge_key = (rel.start_node.element_id, rel.end_node.element_id, rel.type, trigger_val)
             if edge_key not in seen_edges:
                 if show_edge_labels:
-                    edge_label = rel.get("trigger") or rel.type
+                    edge_label = f"{trigger_val} [{condition_val}]" if condition_val else trigger_val
                 else:
                     edge_label = ""
+                edge_color = "#f5a142" if is_self_loop else None
+                kwargs = {"label": edge_label}
+                if edge_color:
+                    kwargs["color"] = edge_color
                 net.add_edge(
                     rel.start_node.element_id,
                     rel.end_node.element_id,
-                    label=edge_label,
+                    **kwargs,
                 )
                 seen_edges.add(edge_key)
 
