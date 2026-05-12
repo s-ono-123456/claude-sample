@@ -99,6 +99,10 @@ options:
 ### Step 1: 現在の状態を把握する
 
 ```!
+git fetch origin
+```
+
+```!
 git status
 ```
 
@@ -107,7 +111,7 @@ git branch --show-current
 ```
 
 ```!
-git log develop..HEAD --oneline
+git log origin/develop..HEAD --oneline
 ```
 
 ### Step 2: PRの内容をまとめる
