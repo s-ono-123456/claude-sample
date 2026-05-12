@@ -535,21 +535,34 @@ class Neo4jClient:
         )
 
     def link_js_navigates_to_batch(self, pairs: list):
-        """[(fn, href, ctrl, cm), ...] → JsFunction -[:NAVIGATES_TO]-> ControllerMethod"""
+        """[(fn, href, condition, ctrl, cm), ...] → JsFunction -[:NAVIGATES_TO {condition}]-> ControllerMethod"""
         items = [
             {
                 "fnId": f"{fn.file_path}#{fn.name}",
                 "cmId": _cm_id(ctrl.class_name, cm.name, cm.url),
+                "condition": condition,
             }
-            for fn, _href, ctrl, cm in pairs
+            for fn, _href, condition, ctrl, cm in pairs
         ]
         self._run_unwind(
             "UNWIND $items AS p "
             "MATCH (jf:JsFunction {id: p.fnId}) "
             "MATCH (cm:ControllerMethod {id: p.cmId}) "
-            "MERGE (jf)-[:NAVIGATES_TO]->(cm)",
+            "MERGE (jf)-[r:NAVIGATES_TO]->(cm) "
+            "SET r.condition = p.condition",
             items,
         )
+
+    def link_js_screen_transitions(self):
+        """JS TRIGGERS_JS → CALLS*0.. → NAVIGATES_TO チェーンから Screen→Screen の TRANSITIONS_TO を生成する。"""
+        with self.driver.session() as session:
+            session.run(
+                "MATCH (sc:Screen)-[:CONTAINS]->(btn:Button)-[:TRIGGERS_JS]->(jf:JsFunction) "
+                "MATCH (jf)-[:CALLS*0..3]->(jf2:JsFunction)-[nav:NAVIGATES_TO]->(cm:ControllerMethod) "
+                "MATCH (cm)-[:RETURNS_VIEW|REDIRECTS_TO]->(sc2:Screen) "
+                "MERGE (sc)-[r:TRANSITIONS_TO {trigger: btn.label}]->(sc2) "
+                "SET r.condition = nav.condition"
+            )
 
     # ------------------------------------------------------------------
     # 診断クエリ

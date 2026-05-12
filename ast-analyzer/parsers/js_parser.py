@@ -60,6 +60,9 @@ _RE_AXIOS = re.compile(r"\baxios\.(get|post|put|delete|patch)\s*\(", re.IGNORECA
 _RE_LOCATION_HREF = re.compile(r"\bwindow\.location(?:\.href)?\s*=\s*([^\n;]+)")
 _RE_LOCATION_REPLACE = re.compile(r"\bwindow\.location\.replace\s*\(\s*([^)]+)")
 
+# ── 条件抽出パターン ──────────────────────────────────────────────────────────
+_RE_IF_COND = re.compile(r"\bif\s*\(")
+
 # ── 関数呼び出し検出 ──────────────────────────────────────────────────────────
 _RE_ANY_CALL = re.compile(r"\b([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(")
 
@@ -307,15 +310,117 @@ def _extract_ajax_calls(body: str) -> List[AjaxCallInfo]:
     return calls
 
 
-def _extract_location_hrefs(body: str) -> List[str]:
-    """window.location.href = ... から遷移先URLを抽出する。"""
-    hrefs: List[str] = []
+def _find_if_condition(body: str, pos: int) -> Optional[str]:
+    """pos より前のコードで最直近の if (condition) の condition 文字列を返す。"""
+    cleaned = _strip_strings_and_comments(body[:pos])
+    matches = list(_RE_IF_COND.finditer(cleaned))
+    if not matches:
+        return None
+    last = matches[-1]
+    paren_open = last.end() - 1  # '(' の位置
+    depth, i = 0, paren_open
+    while i < len(cleaned):
+        if cleaned[i] == '(':
+            depth += 1
+        elif cleaned[i] == ')':
+            depth -= 1
+            if depth == 0:
+                return body[paren_open + 1:i].strip()
+        i += 1
+    return None
+
+
+def _extract_top_level_guards(body: str) -> List[str]:
+    """
+    関数ボディ内のトップレベル（rel_depth=0、関数直下）の早期リターンガード条件を抽出する。
+    パターン: if (cond) { ... return ... } で cond が真なら関数を抜けるもの。
+    """
+    cleaned = _strip_strings_and_comments(body)
+    guards: List[str] = []
+
+    # 関数全体の外側ブレース範囲を確定（スキャン範囲の上限に使う）
+    fn_open = cleaned.find("{")
+    if fn_open == -1:
+        return guards
+    fn_close = _match_braces(cleaned, fn_open)
+    if fn_close == -1:
+        return guards
+
+    i = fn_open + 1          # 関数 '{' の直後から開始
+    rel_depth = 0             # fn_open 直後を 0 とした相対深度
+
+    while i < fn_close:
+        c = cleaned[i]
+
+        if c == "{":
+            rel_depth += 1
+            i += 1
+            continue
+        if c == "}":
+            rel_depth -= 1
+            i += 1
+            continue
+
+        # rel_depth == 0 が関数直下（ネストしていないブロック）
+        if rel_depth == 0 and cleaned[i:i + 2] == "if":
+            nx = cleaned[i + 2] if i + 2 < fn_close else " "
+            if not (nx.isalnum() or nx in ("_", "$")):
+                # 条件カッコ '(' を探す（fn_close より手前のみ）
+                k = cleaned.find("(", i + 2)
+                if 0 < k < fn_close:
+                    # 対応する ')' を探す（fn_close 内のみ）
+                    pd = 0
+                    j = k
+                    paren_close = -1
+                    while j < fn_close:
+                        if cleaned[j] == "(":
+                            pd += 1
+                        elif cleaned[j] == ")":
+                            pd -= 1
+                            if pd == 0:
+                                paren_close = j
+                                break
+                        j += 1
+
+                    if paren_close != -1:
+                        cond = body[k + 1:paren_close].strip()
+                        # if ボディ '{' を探す（空白スキップ）
+                        b = paren_close + 1
+                        while b < fn_close and cleaned[b] in (" ", "\t", "\n"):
+                            b += 1
+                        if b < fn_close and cleaned[b] == "{":
+                            ib_end = _match_braces(cleaned, b)
+                            if ib_end != -1:
+                                if_body = cleaned[b:ib_end + 1]
+                                if (re.search(r"\breturn\b", if_body)
+                                        and "window.location" not in if_body):
+                                    guards.append(cond)
+                                i = ib_end + 1
+                                continue
+
+        i += 1
+
+    return guards
+
+
+def _extract_location_hrefs(body: str) -> List[Tuple[str, Optional[str]]]:
+    """window.location.href = ... から (遷移先URL, 条件式) を抽出する。
+    関数直下の早期リターンガード条件も組み合わせる。
+    """
+    guards = _extract_top_level_guards(body)
+    results: List[Tuple[str, Optional[str]]] = []
     for pattern in (_RE_LOCATION_HREF, _RE_LOCATION_REPLACE):
         for m in pattern.finditer(body):
             raw = m.group(1).rstrip(");").strip()
             url, _ = _extract_url(raw)
-            hrefs.append(url)
-    return hrefs
+            immediate_cond = _find_if_condition(body, m.start())
+            # ガード条件の否定 + 直近の if 条件を結合
+            parts = [f"!({g})" for g in guards]
+            if immediate_cond:
+                parts.append(immediate_cond)
+            condition = " && ".join(parts) if parts else None
+            results.append((url, condition))
+    return results
 
 
 def _extract_fn_calls(body: str, own_name: str) -> List[str]:

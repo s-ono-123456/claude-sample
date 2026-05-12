@@ -107,6 +107,7 @@ MERGE (cm)-[:CALLS]->(sm)
   link_js_calls_js_batch()      ─┤─ JS 関連エッジ（各1クエリ、ただし link_ajax_to_controllers は2クエリ）
   link_ajax_to_controllers()    ─┤
   link_js_navigates_to_batch()  ─┘
+  link_js_screen_transitions()  ─── JS 遷移から Screen→Screen の TRANSITIONS_TO を Cypher で生成（1クエリ）
 ```
 
 ---
@@ -120,8 +121,8 @@ MERGE (cm)-[:CALLS]->(sm)
 | Phase 2 ノード | Σ(1 + 2B) per screen | 3 |
 | Phase 2 エッジ | Σ(pairs) | 6 |
 | Phase 3 ノード | Σ(1 + 2F + 2A) per file | 5 |
-| Phase 3 エッジ | Σ(pairs) | 5 |
-| **合計** | **数百〜数千（規模依存）** | **~35（規模非依存）** |
+| Phase 3 エッジ | Σ(pairs) | 6 |
+| **合計** | **数百〜数千（規模依存）** | **~36（規模非依存）** |
 
 ---
 
@@ -156,6 +157,32 @@ SET r.condition = p.condition
 - `condition` が `null` の場合、`SET` によりプロパティが削除される（Neo4j の仕様）
 - 同一画面への自己ループ（`fromPath == toPath`）も同じパターンで登録される
 - 同一 `(from, to, trigger)` で条件が異なる場合は既存リレーションシップの `condition` が上書きされる
+
+---
+
+## JS 経由の TRANSITIONS_TO 生成（link_js_screen_transitions）
+
+`link_js_navigates_to_batch` で生成した `JsFunction -[NAVIGATES_TO {condition}]-> ControllerMethod` エッジを起点に、
+Cypher のグラフ走査で `Screen → Screen` の `TRANSITIONS_TO` を追加生成する。
+
+```cypher
+MATCH (sc:Screen)-[:CONTAINS]->(btn:Button)-[:TRIGGERS_JS]->(jf:JsFunction)
+MATCH (jf)-[:CALLS*0..3]->(jf2:JsFunction)-[nav:NAVIGATES_TO]->(cm:ControllerMethod)
+MATCH (cm)-[:RETURNS_VIEW|REDIRECTS_TO]->(sc2:Screen)
+MERGE (sc)-[r:TRANSITIONS_TO {trigger: btn.label}]->(sc2)
+SET r.condition = nav.condition
+```
+
+- `[:CALLS*0..3]`: `checkout → placeOrder` のような関数呼び出し連鎖を最大3ホップ追跡
+- `nav.condition`: `window.location.href` を囲む最直近の `if (条件)` テキスト（例: `response.success`、`status === 401`）
+- `NAVIGATES_TO` エッジの condition は js_parser.py の `_find_if_condition()` で抽出される
+
+**例（product/list → order/detail の場合）**
+
+| 遷移元 | 遷移先 | trigger | condition |
+|--------|--------|---------|-----------|
+| 商品一覧 | 注文詳細 | 注文する | response.success |
+| 商品一覧 | ログイン | 注文する | status === 401 |
 
 ---
 

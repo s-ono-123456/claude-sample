@@ -152,6 +152,30 @@ Button → ControllerMethod → [Screen1, Screen2, ...]
 
 動的URL（変数結合・テンプレートリテラル）は `unresolved=True` フラグでマーク。
 
+#### ガード条件の抽出（`_extract_top_level_guards`）
+
+関数ボディのトップレベル（depth=1、ネストしていない直下）に存在する
+「早期リターンガード」の条件を抽出する機能。
+
+**対象パターン**:
+
+```js
+if (cart.length === 0) {   // ← ガード条件 (cart.length === 0)
+    showMessage('...');
+    return;                // ← 早期リターンで後続のナビゲーションをブロック
+}
+window.location.href = '/order/detail/' + id;
+```
+
+**動作**:
+1. ブレース深度を逐次追跡し、depth=1 の `if (cond)` を検出
+2. `if` ボディに `return` を含み、`window.location` を含まないものをガードと判定
+3. `_extract_location_hrefs` で各ナビゲーションの condition に `!(guard)` を付加
+
+**結果の例**（`placeOrder()` の `window.location.href = .../order/detail/...`）:
+- 変更前: `condition = "response.success"`
+- 変更後: `condition = "!(cart.length === 0) && response.success"`
+
 ### JS リンカー (`js_linker.py`)
 
 | 処理 | 内容 |

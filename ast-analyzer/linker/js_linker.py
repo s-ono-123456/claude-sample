@@ -134,10 +134,10 @@ def link_hrefs_to_controllers(
     js_files: List[JsFileInfo],
     controllers: List[ControllerInfo],
     context_path: str = "",
-) -> List[Tuple[JsFunctionInfo, str, ControllerInfo, ControllerMethodInfo]]:
+) -> List[Tuple[JsFunctionInfo, str, any, ControllerInfo, ControllerMethodInfo]]:
     """
     window.location.href = url を ControllerMethod.url に照合する。
-    Returns: [(js_function, href_url, ctrl, ctrl_method), ...]
+    Returns: [(js_function, href_url, condition, ctrl, ctrl_method), ...]
     """
     all_methods: List[Tuple[ControllerInfo, ControllerMethodInfo, str, re.Pattern]] = []
     for ctrl in controllers:
@@ -148,15 +148,15 @@ def link_hrefs_to_controllers(
     results = []
     for js_file in js_files:
         for fn in js_file.functions:
-            for href in fn.location_hrefs:
+            for href, condition in fn.location_hrefs:
                 href_norm = _normalize_url(href, context_path)
                 href_pattern = _url_to_pattern(href_norm)
 
                 for ctrl, cm, ctrl_norm, ctrl_pattern in all_methods:
                     if not (ctrl_pattern.fullmatch(href_norm) or href_pattern.fullmatch(ctrl_norm)):
                         continue
-                    results.append((fn, href, ctrl, cm))
-                    log.debug("Href→Ctrl: %s -> %s.%s", href, ctrl.class_name, cm.name)
+                    results.append((fn, href, condition, ctrl, cm))
+                    log.debug("Href→Ctrl: %s [%s] -> %s.%s", href, condition, ctrl.class_name, cm.name)
                     break
 
     return results

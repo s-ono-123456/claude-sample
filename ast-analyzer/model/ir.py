@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from enum import Enum
 
 
@@ -141,7 +141,7 @@ class JsFunctionInfo:
     file_path: str
     ajax_calls: List[AjaxCallInfo] = field(default_factory=list)
     fn_calls: List[str] = field(default_factory=list)      # 呼び出し先関数名
-    location_hrefs: List[str] = field(default_factory=list)  # window.location.href 遷移先
+    location_hrefs: List[Tuple[str, Optional[str]]] = field(default_factory=list)  # (url, condition)
     line: int = 0
 
 

@@ -285,6 +285,9 @@ def main(config_path: str, dry_run: bool, phase: int, reset: bool = False):
         log.info("Phase 3: LocationHref→ControllerMethodエッジを生成中 (NAVIGATES_TO)...")
         neo4j.link_js_navigates_to_batch(href_ctrl_pairs)
 
+        log.info("Phase 3: JS遷移からTRANSITIONS_TOエッジを生成中...")
+        neo4j.link_js_screen_transitions()
+
     log.info("=== 完了 ===")
 
 
