@@ -120,6 +120,7 @@ def link_ajax_to_controllers(
                     if cm.http_method != HttpMethod.ANY:
                         if ajax.http_method.upper() != cm.http_method.value.upper():
                             continue
+                    ajax.unresolved = False
                     results.append((fn, ajax, ctrl, cm))
                     log.debug(
                         "Ajax→Ctrl: %s [%s] -> %s.%s",

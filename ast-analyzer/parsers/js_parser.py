@@ -152,6 +152,50 @@ def _first_arg(text: str, start: int) -> str:
     return "".join(buf).strip()
 
 
+def _split_concat_expr(expr: str) -> List[str]:
+    """括弧・文字列リテラル内の + を無視して文字列連結を分割する。"""
+    parts: List[str] = []
+    buf: List[str] = []
+    depth = 0
+    in_str = False
+    str_char = ""
+    i = 0
+    n = len(expr)
+    while i < n:
+        c = expr[i]
+        if in_str:
+            buf.append(c)
+            if c == "\\" and i + 1 < n:
+                buf.append(expr[i + 1])
+                i += 2
+                continue
+            if c == str_char:
+                in_str = False
+        elif c in ('"', "'", "`"):
+            in_str, str_char = True, c
+            buf.append(c)
+        elif c in ("(", "[", "{"):
+            depth += 1
+            buf.append(c)
+        elif c in (")", "]", "}"):
+            depth -= 1
+            buf.append(c)
+        elif c == "+" and depth == 0:
+            part = "".join(buf).strip()
+            if part:
+                parts.append(part)
+            buf = []
+            i += 1
+            continue
+        else:
+            buf.append(c)
+        i += 1
+    part = "".join(buf).strip()
+    if part:
+        parts.append(part)
+    return parts
+
+
 def _extract_url(expr: str) -> Tuple[str, bool]:
     """URL式から (正規化URL, unresolved) を返す。"""
     expr = expr.strip().rstrip(";").strip()
@@ -172,13 +216,15 @@ def _extract_url(expr: str) -> Tuple[str, bool]:
         return expr, True
 
     # 文字列連結 (contextPath + '/path' + variable + ...)
-    parts = re.split(r"\s*\+\s*", expr)
+    parts = _split_concat_expr(expr)
     url_parts: List[str] = []
     unresolved = False
 
     for part in parts:
-        part = part.strip()
         if not part or part in _CONTEXT_VARS:
+            continue
+        # 括弧内の三項演算子で '?' 始まり文字列を含む → オプションクエリ文字列 → スキップ
+        if part.startswith("(") and re.search(r"""['"]\?""", part):
             continue
         # 条件式・関数呼び出しを含む部分は {var} 扱い
         if "?" in part or "(" in part:
@@ -248,6 +294,24 @@ def _strip_strings_and_comments(source: str) -> str:
 # 抽出ロジック
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _resolve_variable(body: str, var_name: str, search_end: int) -> Optional[str]:
+    """関数ボディ内で var/let/const var_name = expr の最後の代入を search_end より前で探す。"""
+    pat = re.compile(
+        r"\b(?:var|let|const)\s+" + re.escape(var_name) + r"\s*=\s*([^\n;]+)"
+    )
+    matches = list(pat.finditer(body[:search_end]))
+    return matches[-1].group(1).strip() if matches else None
+
+
+def _try_resolve(body: str, url: str, unresolved: bool, pos: int) -> Tuple[str, bool]:
+    """単純識別子の場合、同関数内の代入を辿って URL を再解決する。"""
+    if unresolved and re.match(r"^[a-zA-Z_$][a-zA-Z0-9_$]*$", url):
+        resolved = _resolve_variable(body, url, pos)
+        if resolved:
+            return _extract_url(resolved)
+    return url, unresolved
+
+
 def _extract_ajax_calls(body: str) -> List[AjaxCallInfo]:
     """関数ボディから AjaxCallInfo リストを抽出する。"""
     calls: List[AjaxCallInfo] = []
@@ -257,6 +321,7 @@ def _extract_ajax_calls(body: str) -> List[AjaxCallInfo]:
         verb = m.group(1).upper()
         url_expr = _first_arg(body, m.end())
         url, unresolved = _extract_url(url_expr)
+        url, unresolved = _try_resolve(body, url, unresolved, m.start())
         line = body[: m.start()].count("\n") + 1
         calls.append(AjaxCallInfo(url=url, http_method=verb, unresolved=unresolved, line=line))
 
@@ -265,6 +330,7 @@ def _extract_ajax_calls(body: str) -> List[AjaxCallInfo]:
         verb = m.group(1).upper()
         url_expr = _first_arg(body, m.end())
         url, unresolved = _extract_url(url_expr)
+        url, unresolved = _try_resolve(body, url, unresolved, m.start())
         line = body[: m.start()].count("\n") + 1
         calls.append(AjaxCallInfo(url=url, http_method=verb, unresolved=unresolved, line=line))
 
@@ -282,6 +348,7 @@ def _extract_ajax_calls(body: str) -> List[AjaxCallInfo]:
         type_m = re.search(r"\b(?:type|method)\s*:\s*['\"]([A-Za-z]+)['\"]", obj_str)
         if url_m:
             url, unresolved = _extract_url(url_m.group(1).strip())
+            url, unresolved = _try_resolve(body, url, unresolved, m.start())
             verb = type_m.group(1).upper() if type_m else "GET"
             line = body[: m.start()].count("\n") + 1
             calls.append(AjaxCallInfo(url=url, http_method=verb, unresolved=unresolved, line=line))
@@ -290,6 +357,7 @@ def _extract_ajax_calls(body: str) -> List[AjaxCallInfo]:
     for m in _RE_FETCH.finditer(body):
         url_expr = _first_arg(body, m.end())
         url, unresolved = _extract_url(url_expr)
+        url, unresolved = _try_resolve(body, url, unresolved, m.start())
         rest_start = m.end() + len(url_expr)
         method_m = re.search(
             r"method\s*:\s*['\"]([A-Za-z]+)['\"]",
@@ -304,6 +372,7 @@ def _extract_ajax_calls(body: str) -> List[AjaxCallInfo]:
         verb = m.group(1).upper()
         url_expr = _first_arg(body, m.end())
         url, unresolved = _extract_url(url_expr)
+        url, unresolved = _try_resolve(body, url, unresolved, m.start())
         line = body[: m.start()].count("\n") + 1
         calls.append(AjaxCallInfo(url=url, http_method=verb, unresolved=unresolved, line=line))
 
