@@ -177,7 +177,7 @@ def run_phase3(cfg: dict, screens: list, controllers: list):
 # ──────────────────────────────────────────────────────────────────────
 # メイン
 # ──────────────────────────────────────────────────────────────────────
-def main(config_path: str, dry_run: bool, phase: int):
+def main(config_path: str, dry_run: bool, phase: int, reset: bool = False):
     cfg = load_config(config_path)
 
     controllers, services, daos, mappers = run_phase1(cfg)
@@ -221,6 +221,8 @@ def main(config_path: str, dry_run: bool, phase: int):
         user=neo4j_cfg["user"],
         password=neo4j_cfg["password"],
     ) as neo4j:
+        if reset:
+            neo4j.clear_all()
         neo4j.create_constraints()
 
         # ── Phase 1: ノード & エッジ ──
@@ -283,27 +285,29 @@ def main(config_path: str, dry_run: bool, phase: int):
         log.info("Phase 3: LocationHref→ControllerMethodエッジを生成中 (NAVIGATES_TO)...")
         neo4j.link_js_navigates_to_batch(href_ctrl_pairs)
 
+        log.info("Phase 3: JS遷移からTRANSITIONS_TOエッジを生成中...")
+        neo4j.link_js_screen_transitions()
+
     log.info("=== 完了 ===")
 
 
 def _build_screen_transitions(neo4j, btn_ctrl_pairs, returns_view, redirects_to):
     """
     Button→ControllerMethod→Screen のパスから Screen→Screen の TRANSITIONS_TO エッジを生成する。
-    これにより画面遷移フローをグラフで直接辿れるようにする。
+    条件分岐（複数 return）・自己ループ（同一画面遷移）を含む全遷移を登録する。
     """
     from graph.neo4j_client import _cm_id
-    cm_to_screen: dict = {}
-    for ctrl_class, cm, screen in returns_view:
-        cm_to_screen[_cm_id(ctrl_class, cm.name, cm.url)] = screen
-    for ctrl_class, cm, screen in redirects_to:
-        cm_to_screen[_cm_id(ctrl_class, cm.name, cm.url)] = screen
+    cm_to_screens: dict[str, list] = {}
+    for ctrl_class, cm, screen, condition in returns_view:
+        cm_to_screens.setdefault(_cm_id(ctrl_class, cm.name, cm.url), []).append((screen, condition))
+    for ctrl_class, cm, screen, condition in redirects_to:
+        cm_to_screens.setdefault(_cm_id(ctrl_class, cm.name, cm.url), []).append((screen, condition))
 
     pairs = []
     for btn, from_screen, cm, ctrl_class in btn_ctrl_pairs:
         mid = _cm_id(ctrl_class, cm.name, cm.url)
-        to_screen = cm_to_screen.get(mid)
-        if to_screen and from_screen.path != to_screen.path:
-            pairs.append((from_screen.path, to_screen.path, btn.label))
+        for to_screen, condition in cm_to_screens.get(mid, []):
+            pairs.append((from_screen.path, to_screen.path, btn.label, condition))
 
     neo4j.link_screens_transitions(pairs)
 
@@ -339,10 +343,11 @@ if __name__ == "__main__":
         "--phase", type=int, default=3, choices=[1, 2, 3],
         help="実行フェーズ: 1=Java/MyBatisのみ, 2=JSP含む, 3=JS含む (デフォルト: 3)"
     )
+    parser.add_argument("--reset", action="store_true", help="Neo4j の全データを削除してから登録する")
     parser.add_argument("--summary", action="store_true", help="Neo4jグラフ統計を表示して終了")
     args = parser.parse_args()
 
     if args.summary:
         cmd_summary(args.config)
     else:
-        main(args.config, args.dry_run, args.phase)
+        main(args.config, args.dry_run, args.phase, args.reset)

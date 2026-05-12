@@ -56,7 +56,7 @@ ControllerMethod -[CALLS]->           ServiceMethod
 ServiceMethod    -[CALLS]->           DaoMethod
 DaoMethod        -[EXECUTES]->        SqlStatement
 SqlStatement     -[READS|WRITES]->    Table
-Screen           -[TRANSITIONS_TO]->  Screen             (画面遷移)
+Screen           -[TRANSITIONS_TO]->  Screen             (画面遷移、自己ループ含む、trigger/conditionプロパティ付き)
 ControllerMethod -[RETURNS_VIEW]->    Screen
 ControllerMethod -[REDIRECTS_TO]->    Screen
 ```
@@ -134,6 +134,7 @@ ast-analyzer/
 - メソッド内の `service.methodName()` 呼び出し
 - `return "viewName"` / `return "redirect:/path"`
 - `ModelAndView` のview名
+- `IfStatement` の条件式（`user == null` など）を `conditional_returns` に格納し、分岐ごとに遷移先と条件をペアで保持
 
 ### MyBatis XMLパーサー
 
@@ -176,7 +177,11 @@ class UrlLinker:
 | `response.sendRedirect("/detail")` | サーブレットリダイレクト |
 | JS `window.location.href = '/detail'` | JS遷移 |
 
-すべて `Screen -[TRANSITIONS_TO {trigger: "buttonLabel", via: "POST /search"}]-> Screen` として記録する。
+すべて `Screen -[TRANSITIONS_TO {trigger: "buttonLabel", condition: "条件式"}]-> Screen` として記録する。
+
+- `condition` は `IfStatement` 直前の条件式（例: `"user == null"`）。無条件 return の場合はプロパティなし
+- 同一画面への自己ループ（例: ログイン失敗→ログイン再表示）も記録される
+- 条件分岐で複数の遷移先を持つ場合、それぞれ別エッジとして登録される
 
 ---
 
@@ -225,7 +230,7 @@ RETURN path
 
 | 課題 | 対処 |
 |---|---|
-| 動的URL生成（変数結合・テンプレートリテラル） | `unresolved=true` フラグでノードマーク、手動補完 |
+| 動的URL生成（変数結合・テンプレートリテラル） | パスパラメータ部分を `{var}` に置換してリンカーがワイルドカードマッチ。同関数スコープ内の変数代入を追って再解決（`_try_resolve`）。オプションクエリ文字列ternaryはスキップして正規URLを抽出。コントローラーへのマッチ成功時に `unresolved=false` へ更新。マッチ不能な場合のみ `unresolved=true` フラグでノードマーク、手動補完。 |
 | リフレクション・動的メソッド呼び出し | 対応範囲外として除外 |
 | JSの複雑なクロージャ | 関数スコープ内のAjaxCallのみ記録 |
 | Springの親クラス継承 | 継承チェーンを追ってRequestMappingを解決 |

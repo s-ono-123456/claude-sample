@@ -22,3 +22,6 @@ settings.local.json
 retro/
 
 ast-analyzer/config.yaml
+
+# Maven build artifacts
+ast-analyzer/sample-app/target/

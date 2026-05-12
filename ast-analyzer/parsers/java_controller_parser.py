@@ -6,7 +6,7 @@ import javalang
 import javalang.tree
 
 from model.ir import (
-    ControllerInfo, ControllerMethodInfo, HttpMethod, MethodCallInfo
+    ControllerInfo, ControllerMethodInfo, HttpMethod, MethodCallInfo, ConditionalReturn
 )
 from parsers.utils import get_annotation_url, walk_for_type
 
@@ -35,6 +35,52 @@ def _extract_service_calls(method) -> list[MethodCallInfo]:
                 line=inv.position.line if inv.position else 0,
             ))
     return calls
+
+
+def _serialize_expr(expr) -> str:
+    if expr is None:
+        return "..."
+    if isinstance(expr, javalang.tree.BinaryOperation):
+        return f"{_serialize_expr(expr.operandl)} {expr.operator} {_serialize_expr(expr.operandr)}"
+    if isinstance(expr, javalang.tree.MethodInvocation):
+        q = f"{expr.qualifier}." if expr.qualifier else ""
+        return f"{q}{expr.member}()"
+    if isinstance(expr, javalang.tree.MemberReference):
+        q = f"{expr.qualifier}." if expr.qualifier else ""
+        return f"{q}{expr.member}"
+    if isinstance(expr, javalang.tree.Literal):
+        return expr.value
+    if isinstance(expr, javalang.tree.UnaryExpression):
+        return f"!{_serialize_expr(expr.expression)}"
+    return "..."
+
+
+def _extract_conditional_returns(method) -> list:
+    """IfStatement を再帰的に走査し、各 return 文に直近の条件を対応付ける。"""
+    results = []
+
+    def walk(stmts_or_stmt, condition=None):
+        if stmts_or_stmt is None:
+            return
+        if isinstance(stmts_or_stmt, list):
+            stmts = stmts_or_stmt
+        elif hasattr(stmts_or_stmt, "statements"):
+            stmts = stmts_or_stmt.statements
+        else:
+            stmts = [stmts_or_stmt]
+        for stmt in stmts:
+            if isinstance(stmt, javalang.tree.ReturnStatement):
+                if isinstance(stmt.expression, javalang.tree.Literal):
+                    val = stmt.expression.value.strip('"\'')
+                    results.append(ConditionalReturn(value=val, condition=condition))
+            elif isinstance(stmt, javalang.tree.IfStatement):
+                cond_str = _serialize_expr(stmt.condition)
+                walk(stmt.then_statement, condition=cond_str)
+                if stmt.else_statement is not None:
+                    walk(stmt.else_statement, condition=f"!({cond_str})")
+
+    walk(method.body)
+    return results
 
 
 def _extract_return_info(method) -> tuple[Optional[str], Optional[str]]:
@@ -122,6 +168,7 @@ def parse_controller(file_path: str) -> Optional[ControllerInfo]:
                 redirect_to=redirect_to,
                 service_calls=_extract_service_calls(member),
                 line=member.position.line if member.position else 0,
+                conditional_returns=_extract_conditional_returns(member),
             ))
 
         fqn = f"{package}.{cls.name}" if package else cls.name

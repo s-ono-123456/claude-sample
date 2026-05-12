@@ -60,7 +60,7 @@
 | `NAVIGATES_TO` | `Button` → `ControllerMethod` | `<a href>` によるリンク遷移 |
 | `RETURNS_VIEW` | `ControllerMethod` → `Screen` | `return "viewName"` によるView返却 |
 | `REDIRECTS_TO` | `ControllerMethod` → `Screen` | `return "redirect:/path"` によるリダイレクト |
-| `TRANSITIONS_TO` | `Screen` → `Screen` | 画面遷移の直接エッジ（`trigger` プロパティにボタンラベル） |
+| `TRANSITIONS_TO` | `Screen` → `Screen` | 画面遷移の直接エッジ（`trigger`: ボタンラベル、`condition`: 分岐条件式、同一画面への自己ループも含む） |
 
 ### Phase 3 エッジ
 
@@ -150,12 +150,15 @@ MATCH path = (s:Screen)-[:CONTAINS]->(b:Button)
 RETURN path
 ```
 
-### 画面遷移フロー（最大5ホップ）
+### 画面遷移フロー（最大5ホップ、自己ループを含む）
 
 ```cypher
-MATCH path = (s:Screen)-[:TRANSITIONS_TO*1..5]->(e:Screen)
+MATCH path = (s:Screen {viewName: $name})-[:TRANSITIONS_TO*1..5]->(e:Screen)
 RETURN path
 ```
+
+同一画面への自己ループ（例: ログイン失敗→ログイン再表示）も含まれる。
+`condition` プロパティがある場合は分岐条件式（例: `"user == null"`）が格納されている。
 
 ### 特定テーブルを参照している画面を逆引き
 

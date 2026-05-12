@@ -59,7 +59,15 @@ Spring MVC + MyBatis + JSP + JS で構成された Java Web アプリケーシ�
 4. `@Autowired` / `@Inject` / `@Resource` フィールドを収集（フィールド名 → 型名）
 5. `@GetMapping` / `@PostMapping` 等のアノテーション付きメソッドを走査
 6. メソッド本体から `MethodInvocation` ノードを再帰的に収集し、`fieldName.methodName()` 形式の呼び出しを抽出
-7. `return` 文から view名または `redirect:/path` を抽出
+7. `return` 文から view名または `redirect:/path` を抽出（`return_view` / `redirect_to`）
+8. `IfStatement` を再帰的に走査し、各 `return` 文に直近の条件式を対応付けて `conditional_returns` に格納
+
+   例: `if (user == null) { return "user/login"; } return "redirect:/product/list";`
+   → `ConditionalReturn(value="user/login", condition="user == null")` と
+     `ConditionalReturn(value="redirect:/product/list", condition=None)` の2件を生成
+
+   条件式は `_serialize_expr` で文字列化（`BinaryOperation`, `MethodInvocation`, `MemberReference` 等に対応、
+   複雑な式は `"..."` にフォールバック）。else 分岐の条件は `!(元の条件)` 形式。
 
 ### Phase 1 終了後のメソッド呼び出し連鎖解決 (`method_call_linker.py`)
 
@@ -106,18 +114,24 @@ Button の `targetUrl` と Controller の `@RequestMapping` URL をマッチン�
 
 ### View照合 (`view_linker.py`)
 
-Controller メソッドの `return_view` / `redirect_to` → Screen の `view_name` を照合。
+Controller メソッドの `conditional_returns` → Screen の `view_name` を照合し、条件情報を保持する。
 
-- `RETURNS_VIEW`: `return "viewName"` → 対応 Screen
-- `REDIRECTS_TO`: `return "redirect:/path"` → URL から view_name を逆引き
+- `RETURNS_VIEW`: `return "viewName"` → 対応 Screen（`condition` 付き）
+- `REDIRECTS_TO`: `return "redirect:/path"` → URL から view_name を逆引き（`condition` 付き）
+
+戻り値は `(ctrl_class, cm, screen, condition)` の4要素タプル。
+`conditional_returns` が空の場合は従来の `return_view` / `redirect_to` にフォールバック（`condition=None`）。
 
 ### 画面遷移エッジの自動生成 (`_build_screen_transitions`)
 
 ```
-Button → ControllerMethod → Screen
+Button → ControllerMethod → [Screen1, Screen2, ...]
 ```
-の連鎖から `Screen -[TRANSITIONS_TO {trigger: "buttonLabel"}]-> Screen` を直接生成。
-これにより画面遷移フローをグラフで直接辿れるようにする。
+の連鎖から `Screen -[TRANSITIONS_TO {trigger: "buttonLabel", condition: "条件式"}]-> Screen` を直接生成。
+
+- 1メソッドが複数 return 値を持つ場合（条件分岐）、全遷移先に対してエッジを生成する
+- 同一画面への自己ループ（例: ログイン失敗→ログイン再表示）も含む
+- `condition=None` の場合は Neo4j の `SET` でプロパティなしとして扱われる
 
 ---
 
@@ -138,6 +152,30 @@ Button → ControllerMethod → Screen
 
 動的URL（変数結合・テンプレートリテラル）は `unresolved=True` フラグでマーク。
 
+#### ガード条件の抽出（`_extract_top_level_guards`）
+
+関数ボディのトップレベル（depth=1、ネストしていない直下）に存在する
+「早期リターンガード」の条件を抽出する機能。
+
+**対象パターン**:
+
+```js
+if (cart.length === 0) {   // ← ガード条件 (cart.length === 0)
+    showMessage('...');
+    return;                // ← 早期リターンで後続のナビゲーションをブロック
+}
+window.location.href = '/order/detail/' + id;
+```
+
+**動作**:
+1. ブレース深度を逐次追跡し、depth=1 の `if (cond)` を検出
+2. `if` ボディに `return` を含み、`window.location` を含まないものをガードと判定
+3. `_extract_location_hrefs` で各ナビゲーションの condition に `!(guard)` を付加
+
+**結果の例**（`placeOrder()` の `window.location.href = .../order/detail/...`）:
+- 変更前: `condition = "response.success"`
+- 変更後: `condition = "!(cart.length === 0) && response.success"`
+
 ### JS リンカー (`js_linker.py`)
 
 | 処理 | 内容 |
@@ -156,9 +194,11 @@ Button → ControllerMethod → Screen
 | `--config <path>` | 設定ファイルパス（デフォルト: `config.yaml`） |
 | `--phase 1\|2\|3` | 実行フェーズ上限（デフォルト: 3） |
 | `--dry-run` | 解析・リンク解決のみ実施、Neo4j への書き込みをスキップ |
+| `--reset` | Neo4j の全ノード・リレーションシップを削除してから登録し直す（スキーマ変更後に使用） |
 | `--summary` | Neo4j グラフの統計と未解決 AjaxCall を表示して終了 |
 
 `--phase 1` は Java/MyBatis のみ、`--phase 2` は JSP を含む、`--phase 3` は JS も含む。
+`--reset` は `MATCH (n) DETACH DELETE n` を実行してから再登録するため、制約定義はそのまま残る。
 
 ---
 

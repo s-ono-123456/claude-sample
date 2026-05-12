@@ -55,6 +55,12 @@ class Neo4jClient:
     # ------------------------------------------------------------------
     # スキーマ初期化
     # ------------------------------------------------------------------
+    def clear_all(self):
+        """全ノード・リレーションシップを削除する。"""
+        with self.driver.session() as session:
+            session.run("MATCH (n) DETACH DELETE n")
+        log.info("全データを削除しました")
+
     def create_constraints(self):
         stmts = [
             "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Screen)           REQUIRE n.path IS UNIQUE",
@@ -335,10 +341,10 @@ class Neo4jClient:
         )
 
     def link_controllers_returns_view(self, pairs: list):
-        """[(ctrl_class, cm, screen), ...] → ControllerMethod -[:RETURNS_VIEW]-> Screen"""
+        """[(ctrl_class, cm, screen, condition), ...] → ControllerMethod -[:RETURNS_VIEW]-> Screen"""
         items = [
             {"cmId": _cm_id(ctrl_class, cm.name, cm.url), "path": screen.path}
-            for ctrl_class, cm, screen in pairs
+            for ctrl_class, cm, screen, *_ in pairs
         ]
         self._run_unwind(
             "UNWIND $items AS p "
@@ -349,10 +355,10 @@ class Neo4jClient:
         )
 
     def link_controllers_redirects_to(self, pairs: list):
-        """[(ctrl_class, cm, screen), ...] → ControllerMethod -[:REDIRECTS_TO]-> Screen"""
+        """[(ctrl_class, cm, screen, condition), ...] → ControllerMethod -[:REDIRECTS_TO]-> Screen"""
         items = [
             {"cmId": _cm_id(ctrl_class, cm.name, cm.url), "path": screen.path}
-            for ctrl_class, cm, screen in pairs
+            for ctrl_class, cm, screen, *_ in pairs
         ]
         self._run_unwind(
             "UNWIND $items AS p "
@@ -363,21 +369,23 @@ class Neo4jClient:
         )
 
     def link_screens_transitions(self, pairs: list):
-        """[(from_path, to_path, trigger), ...] → Screen -[:TRANSITIONS_TO]-> Screen"""
-        to_paths = list({to_path for _, to_path, _ in pairs})
+        """[(from_path, to_path, trigger, condition), ...] → Screen -[:TRANSITIONS_TO]-> Screen"""
+        to_paths = list({to_path for _, to_path, _, _ in pairs})
         self._run_unwind(
             "UNWIND $items AS p MERGE (s:Screen {path: p})",
             to_paths,
         )
         items = [
-            {"fromPath": from_path, "toPath": to_path, "trigger": trigger}
-            for from_path, to_path, trigger in pairs
+            {"fromPath": from_path, "toPath": to_path, "trigger": trigger, "condition": condition}
+            for from_path, to_path, trigger, condition in pairs
         ]
+        # condition は null の場合があるため MERGE キーに含めず SET で設定する
         self._run_unwind(
             "UNWIND $items AS p "
             "MATCH (s1:Screen {path: p.fromPath}) "
             "MATCH (s2:Screen {path: p.toPath}) "
-            "MERGE (s1)-[:TRANSITIONS_TO {trigger: p.trigger}]->(s2)",
+            "MERGE (s1)-[r:TRANSITIONS_TO {trigger: p.trigger}]->(s2) "
+            "SET r.condition = p.condition",
             items,
         )
 
@@ -527,21 +535,34 @@ class Neo4jClient:
         )
 
     def link_js_navigates_to_batch(self, pairs: list):
-        """[(fn, href, ctrl, cm), ...] → JsFunction -[:NAVIGATES_TO]-> ControllerMethod"""
+        """[(fn, href, condition, ctrl, cm), ...] → JsFunction -[:NAVIGATES_TO {condition}]-> ControllerMethod"""
         items = [
             {
                 "fnId": f"{fn.file_path}#{fn.name}",
                 "cmId": _cm_id(ctrl.class_name, cm.name, cm.url),
+                "condition": condition,
             }
-            for fn, _href, ctrl, cm in pairs
+            for fn, _href, condition, ctrl, cm in pairs
         ]
         self._run_unwind(
             "UNWIND $items AS p "
             "MATCH (jf:JsFunction {id: p.fnId}) "
             "MATCH (cm:ControllerMethod {id: p.cmId}) "
-            "MERGE (jf)-[:NAVIGATES_TO]->(cm)",
+            "MERGE (jf)-[r:NAVIGATES_TO]->(cm) "
+            "SET r.condition = p.condition",
             items,
         )
+
+    def link_js_screen_transitions(self):
+        """JS TRIGGERS_JS → CALLS*0.. → NAVIGATES_TO チェーンから Screen→Screen の TRANSITIONS_TO を生成する。"""
+        with self.driver.session() as session:
+            session.run(
+                "MATCH (sc:Screen)-[:CONTAINS]->(btn:Button)-[:TRIGGERS_JS]->(jf:JsFunction) "
+                "MATCH (jf)-[:CALLS*0..3]->(jf2:JsFunction)-[nav:NAVIGATES_TO]->(cm:ControllerMethod) "
+                "MATCH (cm)-[:RETURNS_VIEW|REDIRECTS_TO]->(sc2:Screen) "
+                "MERGE (sc)-[r:TRANSITIONS_TO {trigger: btn.label}]->(sc2) "
+                "SET r.condition = nav.condition"
+            )
 
     # ------------------------------------------------------------------
     # 診断クエリ

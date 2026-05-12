@@ -9,8 +9,7 @@ _GRAPH_OPTIONS = """
     "margin": 12
   },
   "edges": {
-    "font": {"size": 12, "align": "top"},
-    "smooth": {"type": "curvedCW", "roundness": 0.1}
+    "font": {"size": 12, "align": "top"}
   },
   "physics": {
     "barnesHut": {
@@ -33,6 +32,18 @@ NODE_COLORS: dict[str, str] = {
     "Table": "#f54242",
     "JsFunction": "#f5e642",
 }
+
+
+def _smooth_for_parallel(index: int, total: int) -> dict:
+    """平行エッジを対称に扇形配置するための vis.js smooth 設定を返す。"""
+    if total == 1:
+        return {"type": "curvedCW", "roundness": 0.1}
+    step = 0.2
+    center = (total - 1) / 2.0
+    normalized = index - center
+    roundness = abs(normalized) * step + 0.1
+    edge_type = "curvedCW" if normalized >= 0 else "curvedCCW"
+    return {"type": edge_type, "roundness": roundness}
 
 
 def _wrap(text: str, width: int = 6) -> str:
@@ -65,12 +76,33 @@ def _color(node: Node) -> str:
     return "#cccccc"
 
 
-def build_pyvis_graph(paths: list, show_edge_labels: bool = True) -> str:
+def build_pyvis_graph(
+    paths: list,
+    show_edge_labels: bool = True,
+    show_self_loops: bool = True,
+) -> str:
     net = Network(height="580px", width="100%", directed=True, bgcolor="#f8f9fa")
     net.set_options(_GRAPH_OPTIONS)
 
+    # 第1パス: (from_id, to_id) ペアごとのユニークエッジ数を集計
+    pair_count: dict[tuple, int] = {}
+    seen_in_pass1: set[tuple] = set()
+    for path in paths:
+        for rel in path.relationships:
+            is_self = rel.start_node.element_id == rel.end_node.element_id
+            if is_self and not show_self_loops:
+                continue
+            trigger_val = rel.get("trigger") or rel.type
+            edge_key = (rel.start_node.element_id, rel.end_node.element_id, rel.type, trigger_val)
+            pair_key = (rel.start_node.element_id, rel.end_node.element_id)
+            if edge_key not in seen_in_pass1:
+                seen_in_pass1.add(edge_key)
+                pair_count[pair_key] = pair_count.get(pair_key, 0) + 1
+
+    # 第2パス: ノードとエッジを追加（エッジは平行本数に応じた曲率を付与）
     seen_nodes: set[str] = set()
     seen_edges: set[tuple] = set()
+    pair_edge_index: dict[tuple, int] = {}
 
     for path in paths:
         start = path.start_node
@@ -86,6 +118,10 @@ def build_pyvis_graph(paths: list, show_edge_labels: bool = True) -> str:
             seen_nodes.add(start.element_id)
 
         for rel in path.relationships:
+            is_self_loop = rel.start_node.element_id == rel.end_node.element_id
+            if is_self_loop and not show_self_loops:
+                continue
+
             end = rel.end_node
             if end.element_id not in seen_nodes:
                 net.add_node(
@@ -98,16 +134,28 @@ def build_pyvis_graph(paths: list, show_edge_labels: bool = True) -> str:
                 )
                 seen_nodes.add(end.element_id)
 
-            edge_key = (rel.start_node.element_id, rel.end_node.element_id, rel.type)
+            trigger_val = rel.get("trigger") or rel.type
+            condition_val = rel.get("condition")
+            edge_key = (rel.start_node.element_id, rel.end_node.element_id, rel.type, trigger_val)
+            pair_key = (rel.start_node.element_id, rel.end_node.element_id)
             if edge_key not in seen_edges:
+                total = pair_count.get(pair_key, 1)
+                idx = pair_edge_index.get(pair_key, 0)
+                smooth = _smooth_for_parallel(idx, total)
+                pair_edge_index[pair_key] = idx + 1
+
                 if show_edge_labels:
-                    edge_label = rel.get("trigger") or rel.type
+                    edge_label = f"{trigger_val} [{condition_val}]" if condition_val else trigger_val
                 else:
                     edge_label = ""
+                edge_color = "#f5a142" if is_self_loop else None
+                kwargs = {"label": edge_label, "smooth": smooth}
+                if edge_color:
+                    kwargs["color"] = edge_color
                 net.add_edge(
                     rel.start_node.element_id,
                     rel.end_node.element_id,
-                    label=edge_label,
+                    **kwargs,
                 )
                 seen_edges.add(edge_key)
 

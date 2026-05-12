@@ -136,6 +136,43 @@ RETURN path
 
 ---
 
+---
+
+### 機能3: 遷移条件一覧
+
+**目的**: 全 `TRANSITIONS_TO` エッジを表形式で俯瞰し、遷移条件を確認する。
+
+**UI**
+- サイドバー: 「遷移元」の multiselect フィルタ
+- メイン上部: 全遷移のデータフレーム（遷移元 / 遷移先 / トリガー / 条件）
+- メイン下部: 「2画面間の経路」セクション
+  - From / To を selectbox で選択
+  - 「経路を検索」ボタン → pyvis グラフを表示
+
+**Cypher（全遷移取得）**
+```cypher
+MATCH (s1:Screen)-[r:TRANSITIONS_TO]->(s2:Screen)
+RETURN
+  coalesce(s1.title, s1.viewName) AS from_screen,
+  coalesce(s2.title, s2.viewName) AS to_screen,
+  r.trigger AS trigger,
+  r.condition AS condition
+ORDER BY from_screen, to_screen
+```
+
+**Cypher（2画面間の経路）**
+```cypher
+MATCH path = (s1:Screen {viewName: $from_view})
+  -[:TRANSITIONS_TO*1..5]->(s2:Screen {viewName: $to_view})
+RETURN path
+```
+
+**表示仕様**
+- `condition = null` の行は「（条件なし）」と表示
+- JS ガード条件は `!(guard_cond)` 形式、AJAX コールバック条件と `&&` で結合
+
+---
+
 ## モジュール設計
 
 ### `graph-explorer/neo4j_client.py`
@@ -144,12 +181,16 @@ RETURN path
 class Neo4jClient:
     def __init__(self, uri: str, user: str, password: str)
     def close(self)
-    def get_all_screens(self) -> list[str]
-        # MATCH (s:Screen) RETURN s.viewName ORDER BY s.viewName
+    def get_all_screens(self) -> dict[str, str]
+        # viewName -> title の辞書
     def get_screen_transitions(self, name: str, hops: int) -> list
         # TRANSITIONS_TO パスを返す
     def get_call_chain(self, name: str) -> list
         # フォーム経路 + JS 経路のパスを結合して返す
+    def get_all_transitions(self) -> list
+        # 全 TRANSITIONS_TO エッジを辞書リストで返す（遷移条件一覧用）
+    def get_paths_between(self, from_view: str, to_view: str, max_hops: int) -> list
+        # 2画面間の全 TRANSITIONS_TO パスを返す
 ```
 
 ### `graph-explorer/graph_builder.py`
@@ -157,8 +198,14 @@ class Neo4jClient:
 ```python
 NODE_COLORS: dict[str, str]  # ノード種別 → 色コード
 
-def build_pyvis_graph(paths: list, node_colors: dict, show_edge_labels: bool = True) -> str:
-    # Neo4j Path オブジェクトリスト → pyvis Network → HTML 文字列
+def _smooth_for_parallel(index: int, total: int) -> dict:
+    # 同一ノード間の平行エッジを扇形に分散する vis.js smooth 設定を返す
+    # total=1 は CW roundness=0.1、複数の場合は CW/CCW を対称に割り当て
+
+def build_pyvis_graph(paths: list, show_edge_labels: bool = True, show_self_loops: bool = True) -> str:
+    # 2 パス構成:
+    #   第1パス: (from, to) ペアごとのユニークエッジ数を集計
+    #   第2パス: ノード・エッジ追加（平行エッジには個別の smooth 設定を付与）
     # ノードの重複を排除（element_id をキーに使用）
     # ノード tooltip にプロパティ情報を表示
 ```
