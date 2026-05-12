@@ -27,6 +27,34 @@ class Neo4jClient:
                 if r["vn"]
             }
 
+    def get_all_transitions(self) -> list:
+        """全 TRANSITIONS_TO エッジを辞書のリストで返す。"""
+        with self._driver.session() as session:
+            result = session.run(
+                "MATCH (s1:Screen)-[r:TRANSITIONS_TO]->(s2:Screen) "
+                "RETURN "
+                "  coalesce(s1.title, s1.viewName) AS from_screen, "
+                "  s1.viewName AS from_view, "
+                "  coalesce(s2.title, s2.viewName) AS to_screen, "
+                "  s2.viewName AS to_view, "
+                "  r.trigger AS trigger, "
+                "  r.condition AS condition "
+                "ORDER BY from_screen, to_screen"
+            )
+            return [dict(r) for r in result]
+
+    def get_paths_between(self, from_view: str, to_view: str, max_hops: int = 5) -> list:
+        """2画面間の全 TRANSITIONS_TO パスを返す。"""
+        with self._driver.session() as session:
+            result = session.run(
+                f"MATCH path = (s1:Screen {{viewName: $from_view}})"
+                f"-[:TRANSITIONS_TO*1..{max_hops}]->(s2:Screen {{viewName: $to_view}}) "
+                "RETURN path",
+                from_view=from_view,
+                to_view=to_view,
+            )
+            return [r["path"] for r in result]
+
     def get_screen_transitions(self, name: str, hops: int) -> list:
         with self._driver.session() as session:
             result = session.run(

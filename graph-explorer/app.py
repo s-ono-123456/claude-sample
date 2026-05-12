@@ -1,6 +1,7 @@
 import os
 import sys
 
+import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -87,17 +88,72 @@ def page_call_chain():
     _legend()
 
 
+def page_transition_table():
+    st.header("遷移条件一覧")
+    client = get_client()
+    rows = client.get_all_transitions()
+    if not rows:
+        st.warning("TRANSITIONS_TO エッジが見つかりません。ast-analyzer でグラフを構築してください。")
+        return
+
+    df = pd.DataFrame(rows, columns=["from_screen", "to_screen", "trigger", "condition",
+                                      "from_view", "to_view"])
+
+    # ── フィルタ ──────────────────────────────────────────────────────
+    all_from = sorted(df["from_screen"].unique().tolist())
+    selected_from = st.sidebar.multiselect("遷移元を絞り込む", all_from, default=[])
+    if selected_from:
+        df = df[df["from_screen"].isin(selected_from)]
+
+    # 表示用: None → 「（条件なし）」
+    display_df = df[["from_screen", "to_screen", "trigger", "condition"]].copy()
+    display_df.columns = ["遷移元", "遷移先", "トリガー", "条件"]
+    display_df["条件"] = display_df["条件"].fillna("（条件なし）")
+
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    st.caption(f"{len(display_df)} 件の遷移を表示")
+
+    # ── 2画面間の経路 ─────────────────────────────────────────────────
+    st.subheader("2画面間の経路")
+    screens = client.get_all_screens()
+    if screens:
+        col1, col2 = st.columns(2)
+        with col1:
+            from_view = st.selectbox(
+                "遷移元", list(screens.keys()),
+                format_func=lambda vn: screens[vn],
+                key="path_from",
+            )
+        with col2:
+            to_view = st.selectbox(
+                "遷移先", list(screens.keys()),
+                format_func=lambda vn: screens[vn],
+                key="path_to",
+            )
+        if st.button("経路を検索"):
+            with st.spinner("経路を検索中..."):
+                paths = client.get_paths_between(from_view, to_view)
+            if not paths:
+                st.info("経路が見つかりませんでした。")
+            else:
+                html = build_pyvis_graph(paths, show_edge_labels=True, show_self_loops=True)
+                components.html(html, height=500, scrolling=True)
+                st.caption(f"{len(paths)} 本の経路を表示")
+
+
 def main():
     st.set_page_config(page_title="Graph Explorer", layout="wide")
     st.title("Graph Explorer")
 
-    page = st.sidebar.radio("機能", ["画面遷移グラフ", "フル呼び出し連鎖グラフ"])
+    page = st.sidebar.radio("機能", ["画面遷移グラフ", "フル呼び出し連鎖グラフ", "遷移条件一覧"])
     st.sidebar.divider()
 
     if page == "画面遷移グラフ":
         page_screen_transitions()
-    else:
+    elif page == "フル呼び出し連鎖グラフ":
         page_call_chain()
+    else:
+        page_transition_table()
 
 
 if __name__ == "__main__":
