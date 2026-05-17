@@ -14,11 +14,11 @@ $ARGUMENTSに応じて以下のいずれかを実行する。
 
 以下を実行して変更の全体像を把握する。
 
-```!
+```
 git status
 ```
 
-```!
+```
 git diff HEAD
 ```
 
@@ -98,19 +98,19 @@ options:
 
 ### Step 1: 現在の状態を把握する
 
-```!
+```
 git fetch origin
 ```
 
-```!
+```
 git status
 ```
 
-```!
+```
 git branch --show-current
 ```
 
-```!
+```
 git log origin/develop..HEAD --oneline
 ```
 
