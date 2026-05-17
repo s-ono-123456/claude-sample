@@ -170,3 +170,65 @@ src/main/webapp/js/__tests__/
 | Controller | 主要分岐 100% | MockMvc でリクエスト/レスポンスを検証 |
 | DAO | CRUD 全操作 | SQL の正確性をインメモリ DB で確認 |
 | JS | 主要関数の分岐 100% | ajaxGet/ajaxPost・カート操作・バリデーション |
+
+---
+
+## 9. クライアント側バリデーションのテスト方針
+
+### 対象パターン
+
+実システムでは HTML タグの `data-*` 属性にバリデーション条件を記載し、フレームワーク共通 JS がその属性を読み取ってバリデーションを実行するパターンが使われている。
+
+```html
+<!-- 例: data-* 属性でルールを定義し、共通 JS が処理する -->
+<input type="text" name="username"
+       data-required="true"
+       data-maxlength="20"
+       data-pattern="[a-zA-Z0-9]+">
+```
+
+### 共通 JS の扱い
+
+フレームワーク側が提供する共通 JS のバリデーションロジック自体はテスト対象外とする。
+
+### 確認対象の分離
+
+クライアント側バリデーションで確認すべきことは性質が異なる 2 つに分かれる。
+
+| 確認対象 | 問い | 手段 | 工程 |
+|---|---|---|---|
+| **JSP 属性の記述が正しいか** | 設計書の仕様通りに `data-maxlength="20"` 等が書かれているか | 静的解析（`extract_metadata.py`） | 単体テスト |
+| **実際にバリデーションが動くか** | 上限値+1 を入力したときにエラーが出るか | Playwright E2E | 連結テスト以降 |
+
+### 単体テスト工程での確認（静的解析）
+
+`extract_metadata.py` が JSP をパースする際に `data-*` 属性も抽出し、`screens.yaml` の `client_validation` として記録する。設計書（バリデーション仕様）との差異は `validation_discrepancies` に記録する。
+
+```yaml
+# screens/register.yaml の記録イメージ
+inputs:
+  - name: username
+    client_validation:
+      required: true     # data-required="true" から抽出
+      maxlength: 20      # data-maxlength="20" から抽出
+    validation_discrepancies:
+      - "設計書: maxlength=30, JSP: maxlength=20 → 不一致"
+```
+
+`validation_discrepancies` が空であることを確認することで、「JSP に正しいバリデーション属性が書かれているか」を単体テスト工程で担保する。
+
+### 連結テスト以降での動作確認（Playwright）
+
+実ブラウザでの動作確認（属性が書かれていても共通 JS が正しく処理するか）は Playwright に委ねる。`screens.yaml` にバリデーション情報が含まれていれば、境界値シナリオ（上限値／上限値+1 の入力）を自動生成できる。
+
+```
+単体テスト工程
+  └── 静的解析: JSP属性 vs 設計書 → 属性記述の正しさを担保
+        ↓（screens.yaml にバリデーション情報が正しく入った状態）
+連結テスト工程
+  └── Playwright: バリデーション境界値シナリオを自動生成・実行
+        → 実ブラウザでの動作を担保
+```
+
+> **現行との対応**: 従来「手動で画面を起動して上限値を入力して確認」していた作業のうち、  
+> 「属性が正しく書かれているか」は静的解析で、「実際の動作」は Playwright 実行で代替する。
