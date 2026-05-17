@@ -25,3 +25,5 @@ ast-analyzer/config.yaml
 
 # Maven build artifacts
 ast-analyzer/sample-app/target/
+
+sqlglot
