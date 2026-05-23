@@ -26,4 +26,13 @@ ast-analyzer/config.yaml
 # Maven build artifacts
 ast-analyzer/sample-app/target/
 
-sqlglot
+# MSYS2/Git Bash crash dumps
+*.stackdump
+
+# Playwright
+playwright-gen/node_modules/
+playwright-gen/test-results/
+playwright-gen/playwright-report/
+playwright-gen/dist/
+
+system-replatform
