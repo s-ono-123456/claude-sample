@@ -42,4 +42,20 @@
         <property name="dataSource" ref="dataSource"/>
     </bean>
 
+    <!-- DB初期化: schema.sql → data.sql の順に実行 -->
+    <bean id="dataSourceInitializer"
+          class="org.springframework.jdbc.datasource.init.DataSourceInitializer">
+        <property name="dataSource" ref="dataSource"/>
+        <property name="databasePopulator">
+            <bean class="org.springframework.jdbc.datasource.init.ResourceDatabasePopulator">
+                <property name="scripts">
+                    <list>
+                        <value>classpath:schema.sql</value>
+                        <value>classpath:data.sql</value>
+                    </list>
+                </property>
+            </bean>
+        </property>
+    </bean>
+
 </beans>

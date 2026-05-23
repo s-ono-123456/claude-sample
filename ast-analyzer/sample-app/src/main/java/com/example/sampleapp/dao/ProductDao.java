@@ -2,6 +2,7 @@ package com.example.sampleapp.dao;
 
 import com.example.sampleapp.model.Product;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 import java.util.List;
 
 @Mapper
@@ -12,5 +13,5 @@ public interface ProductDao {
     int insert(Product product);
     int update(Product product);
     int delete(Integer id);
-    int updateStock(Integer id, Integer quantity);
+    int updateStock(@Param("id") Integer id, @Param("quantity") Integer quantity);
 }
