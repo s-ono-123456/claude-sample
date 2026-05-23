@@ -1,0 +1,40 @@
+id: user_register
+title: 新規ユーザー登録
+url: /user/register
+jsp: user/register.jsp
+assertions:
+  on_load:
+  - type: title
+    value: 新規ユーザー登録
+  - type: h1
+    value: 新規ユーザー登録
+  - type: url
+    value: /user/register
+forms:
+- id: registerForm
+  action: /user/register
+  method: post
+  inputs:
+  - name: username
+    id: username
+    label: ユーザー名
+    type: text
+    required: true
+  - name: email
+    id: email
+    label: メールアドレス
+    type: email
+    required: true
+  buttons:
+  - id: registerBtn
+    label: 登録
+    type: submit
+    js_fn: validateRegisterForm
+  transition_to: user_register
+  bound_class: null
+standalone_inputs: []
+nav_links:
+- text: ログインページへ戻る
+  href: /user/login
+  transition_to: login
+js_actions: []

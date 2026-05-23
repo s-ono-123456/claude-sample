@@ -1,0 +1,40 @@
+screens:
+  - id: login
+    title: ログイン
+    url: /user/login
+    jsp: user/login.jsp
+
+  - id: user_register
+    title: 新規ユーザー登録
+    url: /user/register
+    jsp: user/register.jsp
+
+  - id: mypage
+    title: マイページ
+    url: /user/mypage
+    jsp: user/mypage.jsp
+
+  - id: product_list
+    title: 商品一覧
+    url: /product/list
+    jsp: product/list.jsp
+
+  - id: product_detail
+    title: 商品詳細
+    url: /product/detail/{id}
+    jsp: product/detail.jsp
+
+  - id: product_edit
+    title: 商品編集
+    url: /product/edit/{id}
+    jsp: product/edit.jsp
+
+  - id: order_list
+    title: 注文一覧
+    url: /order/list
+    jsp: order/list.jsp
+
+  - id: order_detail
+    title: 注文詳細
+    url: /order/detail/{id}
+    jsp: order/detail.jsp

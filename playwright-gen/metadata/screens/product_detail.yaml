@@ -1,0 +1,47 @@
+id: product_detail
+title: 商品詳細
+url: /product/detail/{id}
+jsp: product/detail.jsp
+assertions:
+  on_load:
+  - type: title
+    value: 商品詳細 -
+  - type: h1
+    value: 商品詳細
+  - type: url
+    value: /product/detail/{id}
+forms:
+- id: null
+  action: /product/delete/
+  method: post
+  inputs: []
+  buttons:
+  - selector: .btn-danger
+    label: 削除
+    type: submit
+  bound_class: null
+standalone_inputs:
+- id: quantity
+  name: quantity
+  type: number
+  label: 数量
+nav_links:
+- text: 商品一覧に戻る
+  href: /product/list
+  transition_to: product_list
+- text: 編集
+  href: /product/edit/
+  transition_to: product_edit
+js_actions:
+- js_fn: addToCartWithQuantity
+  reads_inputs:
+  - quantity
+  id: addCartBtn
+- js_fn: buyNow
+  reads_inputs:
+  - quantity
+  transitions:
+  - url_suffix: /order/detail/
+    transition_to: order_detail
+    unresolved: false
+  id: buyNowBtn

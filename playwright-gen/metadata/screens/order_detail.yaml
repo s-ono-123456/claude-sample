@@ -1,0 +1,27 @@
+id: order_detail
+title: 注文詳細
+url: /order/detail/{id}
+jsp: order/detail.jsp
+assertions:
+  on_load:
+  - type: title
+    value: 注文詳細
+  - type: h1
+    value: 注文詳細
+  - type: url
+    value: /order/detail/{id}
+forms: []
+standalone_inputs: []
+nav_links:
+- text: 注文履歴に戻る
+  href: /order/list
+  transition_to: order_list
+- text: ${item.productId}
+  href: /product/detail/
+  transition_to: product_detail
+js_actions:
+- js_fn: completeOrder
+  reads_inputs:
+  - orderStatus
+  - completeBtn
+  id: completeBtn

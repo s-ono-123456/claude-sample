@@ -1,0 +1,63 @@
+id: product_list
+title: 商品一覧
+url: /product/list
+jsp: product/list.jsp
+assertions:
+  on_load:
+  - type: title
+    value: 商品一覧
+  - type: h1
+    value: 商品一覧
+  - type: url
+    value: /product/list
+forms:
+- id: null
+  action: /product/list
+  method: get
+  inputs:
+  - name: category
+    id: categorySelect
+    type: select
+    options:
+    - value: ''
+      label: すべてのカテゴリ
+    - value: electronics
+      label: selected>電子機器
+    - value: clothing
+      label: selected>衣類
+    - value: food
+      label: selected>食品
+  buttons:
+  - id: searchBtn
+    label: 検索
+    type: submit
+  transition_to: product_list
+  bound_class: null
+standalone_inputs: []
+nav_links:
+- text: マイページ
+  href: /user/mypage
+  transition_to: mypage
+- text: 注文履歴
+  href: /order/list
+  transition_to: order_list
+- text: ログアウト
+  href: /user/logout
+- text: ${product.name}
+  href: /product/detail/
+  transition_to: product_detail
+- text: 編集
+  href: /product/edit/
+  transition_to: product_edit
+- text: 新規商品登録
+  href: /product/new
+js_actions:
+- js_fn: placeOrder
+  transitions:
+  - url_suffix: /order/detail/
+    transition_to: order_detail
+    unresolved: false
+  - url_suffix: /user/login
+    transition_to: login
+    unresolved: false
+  id: placeOrderBtn

@@ -1,0 +1,46 @@
+id: product_edit
+title: 商品編集
+url: /product/edit/{id}
+jsp: product/edit.jsp
+assertions:
+  on_load:
+  - type: title
+    value: 商品編集新規商品登録
+  - type: h1
+    value: 商品編集新規商品登録
+  - type: url
+    value: /product/edit/{id}
+forms:
+- id: productForm
+  action: /product/update
+  method: post
+  inputs:
+  - name: id
+    type: hidden
+    value: null
+  buttons: []
+  bound_class: null
+- id: productForm
+  action: /product/create
+  method: post
+  inputs: []
+  buttons: []
+  bound_class: null
+standalone_inputs:
+- id: name
+  name: name
+  type: text
+  label: 商品名
+- id: price
+  name: price
+  type: number
+  label: 価格
+- id: stock
+  name: stock
+  type: number
+  label: 在庫数
+nav_links:
+- text: キャンセル
+  href: /product/list
+  transition_to: product_list
+js_actions: []

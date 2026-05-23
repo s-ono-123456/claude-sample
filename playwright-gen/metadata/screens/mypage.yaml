@@ -1,0 +1,46 @@
+id: mypage
+title: マイページ
+url: /user/mypage
+jsp: user/mypage.jsp
+assertions:
+  on_load:
+  - type: title
+    value: マイページ
+  - type: h1
+    value: マイページ
+  - type: url
+    value: /user/mypage
+forms:
+- id: userForm
+  action: /user/update
+  method: post
+  inputs:
+  - name: id
+    type: hidden
+    value: null
+  - name: email
+    id: email
+    label: メールアドレス
+    type: email
+  buttons:
+  - id: updateBtn
+    label: 更新
+    type: submit
+  bound_class: null
+standalone_inputs: []
+nav_links:
+- text: 商品一覧
+  href: /product/list
+  transition_to: product_list
+- text: 注文履歴
+  href: /order/list
+  transition_to: order_list
+- text: ログアウト
+  href: /user/logout
+- text: 注文履歴を確認する
+  href: /order/list
+  transition_to: order_list
+- text: 商品を探す
+  href: /product/list
+  transition_to: product_list
+js_actions: []

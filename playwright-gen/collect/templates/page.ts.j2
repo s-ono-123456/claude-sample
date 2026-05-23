@@ -1,0 +1,53 @@
+import { Page, Locator, expect } from '@playwright/test';
+import { BasePage } from './BasePage';
+
+export class {{ screen.id | pascal_case }}Page extends BasePage {
+{% for loc in locators %}
+  readonly {{ loc.name }}: Locator;
+{% endfor %}
+
+  constructor(page: Page) {
+    super(page);
+{% for loc in locators %}
+    this.{{ loc.name }} = page.locator('{{ loc.selector }}');
+{% endfor %}
+  }
+
+  async goto({{ goto.args | join(', ', attribute='ts_sig') }}) {
+    await this.page.goto(`{{ goto.js_url }}`);
+  }
+
+  async waitForLoad() {
+{% for stmt in on_load_stmts %}
+    {{ stmt }}
+{% endfor %}
+  }
+
+{% for method in form_methods %}
+  async {{ method.name }}({{ method.args | join(', ', attribute='ts_sig') }}) {
+{% if method.has_confirm %}
+    this.page.on('dialog', dialog => dialog.accept());
+{% endif %}
+{% for inp in method.inputs %}
+{% if inp.type == 'select' %}
+    await this.{{ inp.id }}Input.selectOption(String({{ inp.id }}));
+{% else %}
+    await this.{{ inp.id }}Input.fill(String({{ inp.id }}));
+{% endif %}
+{% endfor %}
+{% for btn in method.buttons %}
+    await this.{{ btn | locator_name }}.click();
+{% endfor %}
+  }
+
+{% endfor %}
+{% for method in js_methods %}
+  async {{ method.name }}({{ method.args | join(', ', attribute='ts_sig') }}) {
+{% for inp_id in method.reads_inputs %}
+    await this.{{ inp_id }}Input.fill(String({{ inp_id }}));
+{% endfor %}
+    await this.{{ method.action_id }}.click();
+  }
+
+{% endfor %}
+}

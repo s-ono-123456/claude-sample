@@ -1,0 +1,37 @@
+id: order_list
+title: 注文一覧
+url: /order/list
+jsp: order/list.jsp
+assertions:
+  on_load:
+  - type: title
+    value: 注文履歴
+  - type: h1
+    value: 注文履歴
+  - type: url
+    value: /order/list
+forms:
+- id: null
+  action: /order/cancel/
+  method: post
+  inputs: []
+  buttons:
+  - selector: .btn-danger
+    label: キャンセル
+    type: submit
+  bound_class: null
+standalone_inputs: []
+nav_links:
+- text: 商品一覧
+  href: /product/list
+  transition_to: product_list
+- text: マイページ
+  href: /user/mypage
+  transition_to: mypage
+- text: 商品を購入する
+  href: /product/list
+  transition_to: product_list
+- text: 詳細
+  href: /order/detail/
+  transition_to: order_detail
+js_actions: []
