@@ -44,13 +44,18 @@
 ```
 playwright-gen/
   lib/
-    ssh-client.ts            ← SSH接続・バッチ実行・CSV配置（新規）
+    ssh-client.ts            ← SSH接続・バッチ実行・CSV配置・IFファイル転送（新規）
+    if-file-builder.ts       ← IFファイル組み立てロジック（新規）
   regression/
     regression-runner.ts     ← オーケストレータ（新規）
     regression.config.ts     ← SSH・実行設定（新規）
   tests/e2e/
     scenario_01_xxx.spec.ts  ← 1ファイル＝1シナリオ（全日程を含む）
     scenario_02_xxx.spec.ts
+    ...
+  tmp/
+    scenario_01_state.json   ← Day 間の状態引き継ぎファイル（実行時生成・gitignore）
+    scenario_02_state.json
     ...
   docs/
     e2e-regression-design.md ← 本ファイル
@@ -88,6 +93,7 @@ test.describe.serial('シナリオ01: 受注登録から請求確認まで', () 
 |---|---|---|
 | describe 名 | `シナリオNN: 〜` | レポート表示・識別 |
 | test 名 | `[DayN] 〜`（角括弧必須） | オーケストレータが `--grep` で日別抽出 |
+| test 名 | `[MakeIfFile_DayN] 〜` | バッチ後・翌日テスト前に実行する IF ファイル生成ステップ |
 
 ### `describe.serial` の効果
 
@@ -113,8 +119,164 @@ test('[Day1] 受注入力', async ({ page }) => {
 
 複数シナリオが同じ業務日に並列実行されるため、シナリオ間でテストデータが衝突してはならない。
 
-- ユーザアカウント・顧客コード・受注番号等をシナリオごとに**固定の別データ**を使用する
+- ユーザアカウント・顧客コード等をシナリオごとに**固定の別データ**を使用する
 - `testdata/` フォルダにシナリオ別のテストデータ定数ファイルを配置する
+
+#### システム採番値（連番 ID・伝票番号等）の扱い
+
+受注番号・請求番号のようなシステムが自動採番する値は事前に確定できない。
+「採番された瞬間にキャプチャして後続 Day に引き継ぐ」方針で対処する。
+
+**実装パターン: describe スコープの状態オブジェクト**
+
+`describe.serial` 内はクロージャで状態を共有できる。Day1 で採番値を取得し、Day2 以降がそれを参照する。
+
+```typescript
+test.describe.serial('シナリオ01: 受注登録から請求確認まで', () => {
+
+  // シナリオ内で採番値を共有するオブジェクト
+  const ctx = {
+    受注番号: '',
+    請求番号: '',
+  };
+
+  test('[Day1] 受注入力・確定', async ({ page }) => {
+    // 登録処理後、完了画面または URL から採番値を取得
+    ctx.受注番号 = await page.locator('#order-number').textContent() ?? '';
+    // URL から取得する場合の例: /orders/12345 → '12345'
+    // ctx.受注番号 = new URL(page.url()).pathname.split('/').at(-1)!;
+  });
+
+  test('[Day2] 出荷処理・在庫引当', async ({ page }) => {
+    // Day1 でキャプチャした採番値で対象レコードを特定
+    await orderSearchPage.search(ctx.受注番号);
+  });
+
+  test('[Day3] 請求締め・照合確認', async ({ page }) => {
+    await billingPage.open(ctx.受注番号);
+  });
+
+});
+```
+
+**採番値の取得場所（優先順位）**
+
+| 優先度 | 取得場所 | 例 | 備考 |
+|---|---|---|---|
+| 1 | 登録完了後の URL | `/orders/12345` | 変わりにくく安定 |
+| 2 | 完了画面の表示値 | `受注番号: 12345` | ロケータで直接取得 |
+| 3 | 固有属性の組み合わせで検索 | 顧客コード＋業務日付 | 採番値が画面に出ない場合の代替 |
+| ✗ | 一覧画面の最新行 | 登録直後の先頭行 | 並列実行時に他シナリオの行が混入する恐れがあるため不可 |
+
+**代替: 固有属性の組み合わせで検索する方法**
+
+採番値の取得が困難な場合、シナリオ固有の属性（顧客コード×業務日付など）でレコードを一意に絞り込む。
+
+```typescript
+test('[Day2] 出荷処理', async ({ page }) => {
+  // 採番値ではなく「顧客コード＋業務日付」で検索して1件に絞り込む
+  await orderSearchPage.searchByCustomer(TEST_DATA.顧客コード);
+  await orderListPage.clickFirstRow();
+});
+```
+
+#### マスタデータのシナリオ専有（推奨方針）
+
+顧客・商品などのマスタデータをシナリオごとに専有させることで、採番値への依存を減らしシナリオを単純に保てる。
+
+```
+testdata/
+  scenario_01.ts  → 顧客: C001, 商品: A001  ← シナリオ01 が専有
+  scenario_02.ts  → 顧客: C002, 商品: B001  ← シナリオ02 が専有
+  scenario_03.ts  → 顧客: C003, 商品: C001  ← シナリオ03 が専有
+```
+
+この分離により「顧客 C001 × 業務日付」でレコードが1件に絞れるため、`ctx` による採番値引き継ぎが不要になる。
+
+**ただし以下のケースでは採番値キャプチャを併用すること**
+
+- 同一シナリオ内で、同じ顧客・商品を**同日に複数回**操作するフローがある場合
+  → 固有属性だけでは絞り込めないため `ctx` オブジェクトに採番値を保持する
+
+**新規シナリオ追加時のルール**
+
+1. 他のシナリオが使っていない顧客コード・商品コードを `testdata/` に追加する
+2. それらのマスタレコードを DB 初期化データ（`data.sql` 等）に投入する
+3. 同一属性を複数シナリオで共有しない
+
+#### Day 間の状態引き継ぎ（JSON ファイル永続化）
+
+`ctx` オブジェクトは**同一 `npx playwright test` 実行内でのみ有効**。
+regression-runner が Day ごとに別プロセスを起動するため、`ctx` に格納した採番値は次の Day 実行時には失われる。
+
+Day をまたいで値を引き継ぐ場合は `tmp/scenario_XX_state.json` に書き出す。
+
+```typescript
+import * as fs from 'fs';
+
+// Day1 終了時: 採番値を JSON に保存
+test('[Day1] 受注入力・確定', async ({ page }) => {
+  // ...
+  const state = { 受注番号: ctx.受注番号 };
+  fs.writeFileSync('tmp/scenario_01_state.json', JSON.stringify(state));
+});
+
+// Day2・[MakeIfFile] 開始時: JSON から復元
+const state = JSON.parse(fs.readFileSync('tmp/scenario_01_state.json', 'utf-8'));
+```
+
+- `tmp/` は `.gitignore` に追加し、実行時生成ファイルとして管理する
+- `ctx` オブジェクトは同一 Day 内の step 間共有に引き続き使用できる
+
+#### 対向システム連携 IF ファイルの生成
+
+夜間バッチが出力したファイルを対向システムに送り、翌営業日に IF ファイルが連携されてくるパターンでは、
+翌日バッチが取り込む想定の IF ファイルを自動生成する必要がある。
+
+**方針**: バッチ実行後に `[MakeIfFile_DayN]` タグのテストを Playwright で実行し、
+バッチ結果確認画面を打鍵して変動値を取得、固定値と合わせて IF ファイルを生成・転送する。
+
+```typescript
+test('[MakeIfFile_Day2] Day1→Day2 IF ファイル生成', async ({ page }) => {
+  // 状態ファイルから前日の採番値を復元
+  const state = JSON.parse(fs.readFileSync('tmp/scenario_01_state.json', 'utf-8'));
+
+  // バッチ処理結果確認画面を打鍵して変動値を取得
+  await loginPage.ログイン('user01', 'password');
+  await billingResultPage.open(state.受注番号);
+  const 請求金額   = await billingResultPage.getBillingAmount();
+  const 処理日付   = await billingResultPage.getProcessedDate();
+
+  // 固定値と組み合わせて IF ファイルを組み立て
+  const content = buildIfFile({
+    顧客コード: TEST_DATA.顧客コード,  // testdata 定数（固定）
+    請求金額,                           // 画面から取得（変動）
+    処理日付,                           // 画面から取得（変動）
+    区分コード: 'A01',                  // 固定値
+    フラグ:     '1',                    // 固定値
+  });
+
+  // ローカルに書き出し（SSH 転送は regression-runner が行う）
+  fs.writeFileSync('tmp/if_scenario_01_day2.csv', content);
+});
+```
+
+IF ファイルの組み立てロジックは `lib/if-file-builder.ts` に集約する。
+
+```typescript
+// lib/if-file-builder.ts
+export interface IfFileParams {
+  顧客コード: string;
+  請求金額:   string;
+  処理日付:   string;
+  区分コード: string;
+  フラグ:     string;
+}
+
+export function buildIfFile(params: IfFileParams): string {
+  return Object.values(params).join(',') + '\n';
+}
+```
 
 ---
 
@@ -129,10 +291,14 @@ npm run regression
   │          ├─ scenario_01: [Day1] 受注入力    ─┐
   │          ├─ scenario_02: [Day1] 契約登録    ─┤ ファイル間並列（workers）
   │          └─ scenario_03: [Day1] 入金処理    ─┘
-  │                    ↓ 全完了を待つ
+  │                    ↓ 全完了を待つ（各シナリオが tmp/*_state.json を書き出す）
   │
   ├─ SSH: CSV 配置（Day2 用）
   ├─ SSH: 夜間バッチ実行 → 業務日付が Day2 に進む
+  ├─ [MakeIfFile_Day2] npx playwright test --grep "\[MakeIfFile_Day2\]"
+  │          ├─ scenario_01: バッチ結果確認画面を打鍵 → IF ファイル生成（tmp/ に書き出し）
+  │          └─ scenario_02: 同上                                         並列
+  ├─ SSH: IF ファイルをバッチサーバに転送（SCP）
   │
   ├─ [Day2] npx playwright test --grep "\[Day2\]"
   │          ├─ scenario_01: [Day2] 出荷処理    ─┐
@@ -141,10 +307,14 @@ npm run regression
   │
   ├─ SSH: CSV 配置（Day3 用）
   ├─ SSH: 夜間バッチ実行 → 業務日付が Day3 に進む
+  ├─ [MakeIfFile_Day3] npx playwright test --grep "\[MakeIfFile_Day3\]"（必要な場合）
+  ├─ SSH: IF ファイルをバッチサーバに転送（必要な場合）
   │
   └─ [Day3] npx playwright test --grep "\[Day3\]"
              └─ scenario_01: [Day3] 請求確認
 ```
+
+> `[MakeIfFile_DayN]` ステップは、対向システム連携 IF ファイルが不要なシナリオ構成では省略できる。
 
 ### Playwright workers の動作
 
@@ -171,17 +341,39 @@ npm run regression
    - Playwright CLI を同期呼び出し（`--grep "[DayN]"`）
    - バッチ前の CSV 配置（SSH）
    - 夜間バッチ実行（SSH）
+   - IF ファイル生成（Playwright: `--grep "[MakeIfFile_DayN+1]"`）※対向連携がある場合
+   - IF ファイルのバッチサーバへの転送（SSH SCP）※対向連携がある場合
 4. 完了後に SSH 切断
 
 ### 骨格
 
 ```typescript
 // regression/regression-runner.ts
-import { spawnSync }       from 'child_process';
-import { SshClient }       from '../lib/ssh-client';
+import { spawnSync }        from 'child_process';
+import { SshClient }        from '../lib/ssh-client';
 import { regressionConfig } from './regression.config';
 
-async function main(): Promise<void>
+async function main(): Promise<void> {
+  const ssh = new SshClient(regressionConfig.ssh);
+  await ssh.connect();
+
+  for (let day = 1; day <= regressionConfig.maxDays; day++) {
+    // オンライン処理
+    spawnSync('npx', ['playwright', 'test', '--grep', `\\[Day${day}\\]`], { stdio: 'inherit' });
+
+    if (day < regressionConfig.maxDays) {
+      // 夜間バッチ
+      await ssh.placeCsvFiles(day);
+      await ssh.runBatch();
+
+      // 対向連携 IF ファイル生成（シナリオに [MakeIfFile_DayN] がある場合のみ実行）
+      spawnSync('npx', ['playwright', 'test', '--grep', `\\[MakeIfFile_Day${day + 1}\\]`], { stdio: 'inherit' });
+      await ssh.uploadIfFiles(day + 1);
+    }
+  }
+
+  await ssh.disconnect();
+}
 ```
 
 ### 失敗時の挙動
@@ -215,6 +407,7 @@ interface SshConfig {
   privateKeyPath: string;
   batchScript: string;
   csvPlaceScript: string;
+  ifFileRemoteDir: string;  // IF ファイルの転送先ディレクトリ（バッチサーバ上）
 }
 
 export class SshClient {
@@ -222,6 +415,7 @@ export class SshClient {
   async connect(): Promise<void>
   async runBatch(): Promise<void>
   async placeCsvFiles(day: number): Promise<void>
+  async uploadIfFiles(day: number): Promise<void>  // ローカル tmp/ → バッチサーバに SCP 転送
   async disconnect(): Promise<void>
 }
 ```
@@ -235,6 +429,26 @@ export class SshClient {
 # バッチサーバ上のシェル例（参考）
 /batch/place_csv.sh 2   # Day2 用 CSV を所定ディレクトリに配置
 ```
+
+### IF ファイル転送方針
+
+`[MakeIfFile_DayN]` テストがローカルの `tmp/` に生成した IF ファイルを、
+`node-ssh` の `putFiles` で一括 SCP 転送する。
+
+```typescript
+async uploadIfFiles(day: number): Promise<void> {
+  const localFiles = glob.sync(`tmp/if_*_day${day}.csv`);
+  await this.ssh.putFiles(
+    localFiles.map(local => ({
+      local,
+      remote: `${this.config.ifFileRemoteDir}/${path.basename(local)}`,
+    }))
+  );
+}
+```
+
+- どのファイルをどのディレクトリに転送するかは `ifFileRemoteDir` 設定で管理する
+- ファイルの命名規則は `if_{scenario_id}_day{N}.csv` に統一する
 
 ### 認証
 
@@ -257,6 +471,7 @@ CI 環境ではシークレットとして管理し、実行時にファイル�
 | `BATCH_SSH_KEY` | 秘密鍵ファイルのパス | `~/.ssh/id_rsa` |
 | `BATCH_SCRIPT` | 夜間バッチ実行シェルのフルパス | なし（必須） |
 | `CSV_PLACE_SCRIPT` | CSV 配置シェルのフルパス | なし（必須） |
+| `IF_FILE_REMOTE_DIR` | IF ファイルの転送先ディレクトリ（バッチサーバ上） | なし（対向連携がある場合は必須） |
 | `REGRESSION_MAX_DAYS` | テストサイクルの最大日数 | `3` |
 | `FAIL_FAST` | Day 失敗時にバッチをスキップするか | `false` |
 
@@ -397,8 +612,10 @@ Day2 以外のテストはスキップされる。`describe.serial` の「失敗
 | フェーズ | 作業内容 |
 |---|---|
 | 1 | `node-ssh` / `tsx` のインストール。`tsconfig.json` 更新 |
-| 2 | `lib/ssh-client.ts` 実装 |
-| 3 | `regression/regression.config.ts` 実装 |
-| 4 | `regression/regression-runner.ts` 実装 |
-| 5 | `playwright.e2e.config.ts` に `workers` 設定追加 |
-| 6 | `tests/e2e/` にサンプルシナリオを1件作成して動作確認 |
+| 2 | `lib/ssh-client.ts` 実装（`uploadIfFiles` を含む） |
+| 3 | `lib/if-file-builder.ts` 実装 |
+| 4 | `regression/regression.config.ts` 実装 |
+| 5 | `regression/regression-runner.ts` 実装（`[MakeIfFile_DayN]` ステップを含む） |
+| 6 | `playwright.e2e.config.ts` に `workers` 設定追加 |
+| 7 | `tests/e2e/` にサンプルシナリオを1件作成して動作確認（Day 間状態引き継ぎ・IF ファイル生成を含む） |
+| 8 | `tmp/` を `.gitignore` に追加 |
