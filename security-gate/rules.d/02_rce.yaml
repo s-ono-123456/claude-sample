@@ -5,34 +5,41 @@ rules:
     action: block
     tools: [Bash, PowerShell]
     conditions:
-      - type: regex
+      - type: match
         field: command
-        # python/ruby へのパイプ実行も追加
-        pattern: "(?i)(curl|wget)[^|\\n]*\\|\\s*((ba)?sh|python[23]?|ruby|perl)"
+        all: ["curl", "|"]
+        any: ["sh", "python", "ruby", "perl"]
+      - type: match
+        field: command
+        all: ["wget", "|"]
+        any: ["sh", "python", "ruby", "perl"]
 
   - id: rce_process_substitution
     description: "プロセス置換によるリモートスクリプト実行"
     action: block
     tools: [Bash]
     conditions:
-      - type: regex
+      - type: contains_all
         field: command
-        pattern: "(?i)(ba)?sh\\s*<\\s*<\\((curl|wget)"
+        values: ["sh", "(curl"]
+      - type: contains_all
+        field: command
+        values: ["sh", "(wget"]
 
   - id: rce_base64_exec
     description: "base64 デコードしてシェルに渡す実行パターン"
     action: block
     tools: [Bash, PowerShell]
     conditions:
-      - type: regex
+      - type: contains_all
         field: command
-        pattern: "(?i)(echo|printf)[^|\\n]*\\|\\s*base64\\s*-d[^|\\n]*\\|\\s*(ba)?sh"
+        values: ["base64", "-d", "|", "sh"]
 
   - id: rce_eval_external
     description: "eval + 外部コマンド展開によるコード実行"
     action: block
     tools: [Bash]
     conditions:
-      - type: regex
+      - type: contains_any
         field: command
-        pattern: "eval\\s+\\$\\((curl|wget|cat)"
+        values: ["eval $(curl", "eval $(wget", "eval $(cat"]

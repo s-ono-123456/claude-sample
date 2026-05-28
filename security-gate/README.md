@@ -15,7 +15,7 @@ mattermost-gate などの承認フローをすり抜けた操作もブロック�
 ## 主な機能
 
 - **YAML ルール定義** — `rules.d/` 以下の YAML を編集するだけでルールを追加・無効化できる（ホットリロード）
-- **5 種類の条件マッチング** — `regex`（正規表現）/ `contains`（部分文字列）/ `contains_any`（いずれか含む）/ `contains_all`（全て含む）/ `path_match`（glob パターン）
+- **6 種類の条件マッチング** — `regex`（正規表現）/ `contains`（部分文字列）/ `contains_any`（いずれか含む）/ `contains_all`（全て含む）/ `match`（all+any 組み合わせ）/ `path_match`（glob パターン）
 - **2 段階のアクション** — `block`（即座に拒否）/ `log`（通過するが JSONL に記録）
 - **フェイルオープン設計** — YAML 構文エラーなどのフック自体の障害時は操作を通過させ、開発を止めない
 - **JSONL 監査ログ** — block / log / pass の全イベントを `log/security.jsonl` に記録
@@ -148,7 +148,27 @@ rules:
 | `contains` | 同上 | 部分文字列（大文字小文字区別なし）|
 | `contains_any` | 同上 | `values` リスト内のいずれか1つを含む（大文字小文字区別なし）|
 | `contains_all` | 同上 | `values` リスト内の全てを含む（大文字小文字区別なし）|
+| `match` | 同上 | `all` の全てを含み、かつ `any` のいずれかを含む（大文字小文字区別なし）|
 | `path_match` | `file_path` | fnmatch glob（`**` ワイルドカード対応）|
+
+#### `unless` / `unless_any` フィールド（除外修飾子）
+
+`contains`・`contains_any`・`contains_all`・`match` の各タイプに `unless` または `unless_any` を付与すると、
+条件が True でも除外文字列が含まれていれば False として扱う。
+
+```yaml
+# --force-with-lease を含む場合はマッチしない
+- type: contains_all
+  field: command
+  values: ["git push", "--force"]
+  unless: "--force-with-lease"
+
+# pypi.org または files.pythonhosted.org を含む場合はマッチしない
+- type: contains_all
+  field: command
+  values: ["pip", "--index-url"]
+  unless_any: ["pypi.org", "files.pythonhosted.org"]
+```
 
 ### ツール名とフィールドの対応
 

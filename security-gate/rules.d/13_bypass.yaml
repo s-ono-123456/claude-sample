@@ -5,9 +5,9 @@ rules:
     action: block
     tools: [Bash]
     conditions:
-      - type: regex
+      - type: contains
         field: command
-        pattern: "eval\\s+\\$[\\{\\(]?\\w"
+        value: "eval $"
 
   - id: bypass_heredoc_bash
     description: "ヒアドキュメントによる bash へのコマンド渡し（ログのみ）"
@@ -23,9 +23,10 @@ rules:
     action: block
     tools: [Bash]
     conditions:
-      - type: regex
+      - type: match
         field: command
-        pattern: "python[23]?\\s+-c\\s+['\"].*(__import__|os\\.system|subprocess|exec\\s*\\()"
+        all: ["python", "-c"]
+        any: ["os.system", "subprocess", "__import__", "exec("]
 
   - id: bypass_node_e_exec
     description: "node -e で child_process を使ってシステムコマンドを実行"

@@ -5,10 +5,14 @@ rules:
     action: block
     tools: [Bash, PowerShell]
     conditions:
-      - type: regex
+      - type: contains_all
         field: command
-        # --force-with-lease は安全なので negative lookahead で除外
-        pattern: "(?i)git\\s+push\\s+(?!.*--force-with-lease).*(-f\\b|--force\\b)"
+        values: ["git push", "--force"]
+        unless: "--force-with-lease"
+      - type: contains_all
+        field: command
+        values: ["git push", " -f"]
+        unless: "--force-with-lease"
 
   - id: git_reset_hard
     description: "git reset --hard によるコミット履歴巻き戻し"

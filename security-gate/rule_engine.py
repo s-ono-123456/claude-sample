@@ -42,6 +42,14 @@ class ConditionChecker:
         return all(s.lower() in v for s in substrings)
 
     @staticmethod
+    def check_match(value: str, all_values: list, any_values: list) -> bool:
+        if not ConditionChecker.check_contains_all(value, all_values):
+            return False
+        if any_values and not ConditionChecker.check_contains_any(value, any_values):
+            return False
+        return True
+
+    @staticmethod
     def check_path_match(value: str, patterns: list) -> bool:
         basename = os.path.basename(value)
         normalized = value.replace("\\", "/")
@@ -124,8 +132,22 @@ class RuleEngine:
                     matched = ConditionChecker.check_contains_any(value, condition.get("values", []))
                 elif ctype == "contains_all":
                     matched = ConditionChecker.check_contains_all(value, condition.get("values", []))
+                elif ctype == "match":
+                    matched = ConditionChecker.check_match(
+                        value,
+                        condition.get("all", []),
+                        condition.get("any", []),
+                    )
                 elif ctype == "path_match":
                     matched = ConditionChecker.check_path_match(value, condition.get("paths", []))
+
+                if matched:
+                    unless = condition.get("unless")
+                    unless_any = condition.get("unless_any", [])
+                    if unless and ConditionChecker.check_contains(value, unless):
+                        matched = False
+                    elif unless_any and ConditionChecker.check_contains_any(value, unless_any):
+                        matched = False
 
                 if matched:
                     results.append(MatchResult(

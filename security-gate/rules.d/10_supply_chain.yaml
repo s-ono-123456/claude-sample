@@ -14,16 +14,17 @@ rules:
     action: block
     tools: [Bash]
     conditions:
-      - type: regex
+      - type: contains_all
         field: command
-        # pypi.org / files.pythonhosted.org 以外のインデックスを指定する場合のみブロック
-        pattern: "(?i)(pip|pip3|uv\\s+pip)\\s+(install|download)\\s+.*(--index-url|-i)\\s+https?://(?!(files\\.pythonhosted\\.org|pypi\\.org))"
+        values: ["pip", "--index-url"]
+        unless_any: ["pypi.org", "files.pythonhosted.org"]
 
   - id: supply_chain_npm_registry
     description: "npm install で非公式レジストリを指定（サプライチェーン攻撃リスク）"
     action: block
     tools: [Bash]
     conditions:
-      - type: regex
+      - type: contains_all
         field: command
-        pattern: "(?i)npm\\s+(install|i)\\s+.*--registry\\s+https?://(?!registry\\.npmjs\\.org)"
+        values: ["npm", "--registry"]
+        unless: "registry.npmjs.org"
