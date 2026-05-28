@@ -1,5 +1,17 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\claude\\.venv\\Scripts\\python.exe C:\\claude\\security-gate\\hook.py",
+            "shell": "powershell"
+          }
+        ]
+      }
+    ],
     "PermissionRequest": [
       {
         "matcher": "",

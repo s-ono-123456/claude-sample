@@ -17,6 +17,7 @@ mattermost-gate/tmp/
 
 # Audit logs
 mattermost-gate/log/
+security-gate/log/
 
 settings.local.json
 retro/
