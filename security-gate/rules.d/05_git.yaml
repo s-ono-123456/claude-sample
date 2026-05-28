@@ -1,0 +1,29 @@
+rules:
+
+  - id: git_force_push
+    description: "git push --force（--force-with-lease は除外）"
+    action: block
+    tools: [Bash, PowerShell]
+    conditions:
+      - type: regex
+        field: command
+        # --force-with-lease は安全なので negative lookahead で除外
+        pattern: "(?i)git\\s+push\\s+(?!.*--force-with-lease).*(-f\\b|--force\\b)"
+
+  - id: git_reset_hard
+    description: "git reset --hard によるコミット履歴巻き戻し"
+    action: block
+    tools: [Bash, PowerShell]
+    conditions:
+      - type: contains_all
+        field: command
+        values: ["git reset", "--hard"]
+
+  - id: git_clean_force
+    description: "git clean -f による未追跡ファイル削除（ログのみ）"
+    action: log
+    tools: [Bash, PowerShell]
+    conditions:
+      - type: contains_all
+        field: command
+        values: ["git clean", "-f"]

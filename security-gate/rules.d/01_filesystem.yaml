@@ -1,0 +1,51 @@
+rules:
+
+  - id: fs_destroy_rm_rf
+    description: "rm -rf による再帰削除"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: contains_any
+        field: command
+        values:
+          - "rm -rf"
+          - "rm -fr"
+          - "rm -r -f"
+          - "rm -f -r"
+          - "--no-preserve-root"
+
+  - id: fs_destroy_rmdir_windows
+    description: "rmdir /s による Windows 再帰削除"
+    action: block
+    tools: [Bash, PowerShell]
+    conditions:
+      - type: contains_any
+        field: command
+        values: ["rmdir /s", "rmdir /q"]
+
+  - id: fs_destroy_remove_item_recurse
+    description: "Remove-Item -Recurse による PowerShell 再帰削除"
+    action: block
+    tools: [Bash, PowerShell]
+    conditions:
+      - type: contains_all
+        field: command
+        values: ["Remove-Item", "-Recurse"]
+
+  - id: fs_destroy_format
+    description: "format コマンドによるディスクフォーマット"
+    action: block
+    tools: [Bash, PowerShell]
+    conditions:
+      - type: regex
+        field: command
+        pattern: "(?i)^\\s*format\\s+[a-zA-Z]:"
+
+  - id: fs_destroy_dd_wipe
+    description: "dd によるディスク上書き"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: contains_all
+        field: command
+        values: ["dd", "of=/dev/"]

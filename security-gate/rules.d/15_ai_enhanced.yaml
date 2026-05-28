@@ -1,0 +1,39 @@
+rules:
+
+  - id: ai_zero_width_inject
+    description: "ゼロ幅 Unicode 文字を含むファイル書き込み（TrapDoor 型 AI 攻撃）"
+    action: block
+    tools: [Write, Edit]
+    conditions:
+      # U+200B/200C/200D/2060/FEFF をリテラルではなく \N{name} エスケープで記述
+      # （リテラル文字を含むとこのルール自身がトリガーされるため）
+      - type: regex
+        field: content
+        pattern: "[\\N{ZERO WIDTH SPACE}\\N{ZERO WIDTH NON-JOINER}\\N{ZERO WIDTH JOINER}\\N{WORD JOINER}\\N{ZERO WIDTH NO-BREAK SPACE}]"
+      - type: regex
+        field: new_string
+        pattern: "[\\N{ZERO WIDTH SPACE}\\N{ZERO WIDTH NON-JOINER}\\N{ZERO WIDTH JOINER}\\N{WORD JOINER}\\N{ZERO WIDTH NO-BREAK SPACE}]"
+
+  - id: ai_mcp_config_write
+    description: "MCP サーバー設定ファイルの改ざん（Tool Poisoning 対策）"
+    action: block
+    tools: [Write, Edit]
+    conditions:
+      - type: path_match
+        field: file_path
+        paths:
+          - "**/.mcp.json"
+          - "**/mcp_servers.json"
+          - "**/mcp-config.json"
+          - "**/.mcp/**"
+
+  - id: ai_cursorrules_write
+    description: ".cursorrules への書き込み（TrapDoor 攻撃：AI への隠し指示を埋め込む）"
+    action: block
+    tools: [Write, Edit]
+    conditions:
+      - type: path_match
+        field: file_path
+        paths:
+          - "**/.cursorrules"
+          - "**/.cursor/rules/**"

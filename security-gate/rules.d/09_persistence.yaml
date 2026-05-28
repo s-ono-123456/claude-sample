@@ -1,0 +1,75 @@
+rules:
+
+  - id: persist_crontab_write
+    description: "crontab -e/-r によるクーロンジョブ操作"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: contains_any
+        field: command
+        values: ["crontab -e", "crontab -r"]
+
+  - id: persist_cron_file_write
+    description: "/etc/cron* や /var/spool/cron への直接書き込み"
+    action: block
+    tools: [Write, Edit, Bash]
+    conditions:
+      - type: path_match
+        field: file_path
+        paths:
+          - "/etc/crontab"
+          - "/etc/cron.d/**"
+          - "/etc/cron.daily/**"
+          - "/etc/cron.hourly/**"
+          - "/var/spool/cron/**"
+      - type: contains_any
+        field: command
+        values: ["> /etc/cron", ">> /etc/cron", "> /var/spool/cron", ">> /var/spool/cron"]
+
+  - id: persist_systemd_service_write
+    description: "systemd サービスファイルの作成・変更（バックドア設置）"
+    action: block
+    tools: [Write, Edit, Bash]
+    conditions:
+      - type: path_match
+        field: file_path
+        paths:
+          - "/etc/systemd/system/**"
+          - "/usr/lib/systemd/system/**"
+          - "**/systemd/user/**"
+      - type: contains_any
+        field: command
+        values: ["> /etc/systemd/system/", ">> /etc/systemd/system/"]
+
+  - id: persist_systemd_enable
+    description: "systemctl enable によるサービス自動起動設定（ログのみ）"
+    action: log
+    tools: [Bash]
+    conditions:
+      - type: contains
+        field: command
+        value: "systemctl enable"
+
+  - id: persist_windows_registry_run
+    description: "Windows レジストリ Run キーへの永続化エントリ追加"
+    action: block
+    tools: [Bash, PowerShell]
+    conditions:
+      - type: regex
+        field: command
+        pattern: "(?i)reg\\s+add\\s+HK[LC][MU]\\\\.*\\\\(Run|RunOnce)"
+
+  - id: persist_profile_system_write
+    description: "/etc/profile.d/** へのシステム全体プロファイル書き込み"
+    action: block
+    tools: [Write, Edit, Bash]
+    conditions:
+      - type: path_match
+        field: file_path
+        paths:
+          - "/etc/profile.d/**"
+          - "/etc/profile"
+          - "/etc/environment"
+      - type: contains_any
+        field: command
+        values: ["> /etc/profile", ">> /etc/profile"]

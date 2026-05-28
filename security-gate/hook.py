@@ -2,7 +2,7 @@ import json
 import os
 import sys
 
-_RULES_PATH = os.path.join(os.path.dirname(__file__), "rules.yaml")
+_RULES_DIR = os.path.join(os.path.dirname(__file__), "rules.d")
 
 # rule_engine を同一ディレクトリから import
 sys.path.insert(0, os.path.dirname(__file__))
@@ -21,7 +21,7 @@ def main() -> None:
     tool_input = hook_input.get("tool_input", {})
     session_id = hook_input.get("session_id", "")
 
-    engine = RuleEngine(_RULES_PATH)
+    engine = RuleEngine(_RULES_DIR)
     engine.load()
 
     logger = AuditLogger(engine.log_path)

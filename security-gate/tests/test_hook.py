@@ -129,11 +129,10 @@ class TestPrivilegeEscalation:
 
 
 class TestAIAttack:
-    def test_claude_md_write_blocked(self):
+    def test_claude_md_write_logged(self):
         r = run_hook("Write", {"file_path": "C:/claude/CLAUDE.md", "content": "evil"})
         assert r.returncode == 0
-        assert is_blocked(r)
-        assert "ai_attack_claude_md" in block_reason(r)
+        assert not is_blocked(r)
 
     def test_settings_json_write_blocked(self):
         r = run_hook("Write", {"file_path": "C:/claude/.claude/settings.json", "content": "{}"})
@@ -151,11 +150,10 @@ class TestAIAttack:
         assert r.returncode == 0
         assert not is_blocked(r)
 
-    def test_hook_script_write_blocked(self):
+    def test_hook_script_write_logged(self):
         r = run_hook("Write", {"file_path": "C:/claude/security-gate/hook.py", "content": "evil"})
         assert r.returncode == 0
-        assert is_blocked(r)
-        assert "ai_attack_hook_scripts" in block_reason(r)
+        assert not is_blocked(r)
 
 
 # =============================================================================

@@ -1,0 +1,28 @@
+rules:
+
+  - id: system_shutdown
+    description: "shutdown / reboot / halt によるシステム停止"
+    action: block
+    tools: [Bash, PowerShell]
+    conditions:
+      - type: contains_any
+        field: command
+        values: ["shutdown", "reboot", "halt", "poweroff", "init 0", "init 6"]
+
+  - id: system_kill_init
+    description: "PID 1（init）への kill -9"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: regex
+        field: command
+        pattern: "kill\\s+-9\\s+1\\b"
+
+  - id: system_fork_bomb
+    description: "フォーク爆弾パターン"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: regex
+        field: command
+        pattern: ":\\(\\)\\s*\\{\\s*:|:\\s*\\|\\s*:&"

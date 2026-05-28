@@ -1,0 +1,40 @@
+rules:
+
+  - id: container_privileged_run
+    description: "docker run --privileged によるコンテナ特権昇格"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: contains_all
+        field: command
+        values: ["docker run", "--privileged"]
+
+  - id: container_sensitive_mount
+    description: "docker run でルートパスをマウント（ホスト脱出リスク）"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: contains_all
+        field: command
+        values: ["docker run", "-v /"]
+      - type: contains_all
+        field: command
+        values: ["docker run", "--volume /"]
+
+  - id: container_pid_host
+    description: "docker run --pid=host によるホストプロセス空間共有"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: contains_all
+        field: command
+        values: ["docker run", "--pid=host"]
+
+  - id: container_nsenter
+    description: "nsenter でホスト PID 1 の名前空間に侵入"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: regex
+        field: command
+        pattern: "nsenter\\s+.*--target\\s+1\\b"

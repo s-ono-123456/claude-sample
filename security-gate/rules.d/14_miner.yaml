@@ -1,0 +1,19 @@
+rules:
+
+  - id: miner_execution
+    description: "暗号通貨マイニングツールの実行"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: contains_any
+        field: command
+        values: ["xmrig", "minerd", "cpuminer", "cryptonight", "ethminer", "cgminer", "bfgminer"]
+
+  - id: network_scan
+    description: "ネットワークスキャンツールの実行（ログのみ）"
+    action: log
+    tools: [Bash]
+    conditions:
+      - type: contains_any
+        field: command
+        values: ["nmap ", "masscan "]

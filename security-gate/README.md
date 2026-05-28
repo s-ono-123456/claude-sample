@@ -14,8 +14,8 @@ mattermost-gate などの承認フローをすり抜けた操作もブロック�
 
 ## 主な機能
 
-- **YAML ルール定義** — `rules.yaml` を編集するだけでルールを追加・無効化できる（ホットリロード）
-- **3 種類の条件マッチング** — `regex`（正規表現）/ `contains`（部分文字列）/ `path_match`（glob パターン）
+- **YAML ルール定義** — `rules.d/` 以下の YAML を編集するだけでルールを追加・無効化できる（ホットリロード）
+- **5 種類の条件マッチング** — `regex`（正規表現）/ `contains`（部分文字列）/ `contains_any`（いずれか含む）/ `contains_all`（全て含む）/ `path_match`（glob パターン）
 - **2 段階のアクション** — `block`（即座に拒否）/ `log`（通過するが JSONL に記録）
 - **フェイルオープン設計** — YAML 構文エラーなどのフック自体の障害時は操作を通過させ、開発を止めない
 - **JSONL 監査ログ** — block / log / pass の全イベントを `log/security.jsonl` に記録
@@ -47,7 +47,7 @@ Claude Code がツールを呼び出す（Bash / Edit / Write / Read / WebFetch 
     │
     ▼  PreToolUse フック（allowedTools に登録済みの操作も対象）
 hook.py
-    │  rules.yaml をロード
+    │  rules.d/*.yaml をロード（アルファベット順にマージ）
     ▼
 RuleEngine.evaluate(tool_name, tool_input)
     │
@@ -117,12 +117,17 @@ echo "exit: $LASTEXITCODE"
 
 ### YAML 構造
 
+ルールは `rules.d/` 以下の YAML ファイルに分散して定義します。  
+`settings.yaml` にグローバル設定、`NN_xxx.yaml` にカテゴリ別ルールを記述します。
+
 ```yaml
-version: 1
-
+# rules.d/settings.yaml（グローバル設定）
 settings:
-  log_path: "C:/claude/security-gate/log/security.jsonl"  # 省略可（デフォルトは同ディレクトリ内）
+  log_path: "C:/claude/security-gate/log/security.jsonl"  # 省略可（デフォルトは security-gate/log/ 以下）
+```
 
+```yaml
+# rules.d/NN_category.yaml（カテゴリ別ルール）
 rules:
   - id: my_custom_rule          # ルール識別子（ログ・stderr に出力される）
     description: "説明文"        # 人間が読む説明
@@ -141,6 +146,8 @@ rules:
 |---|---|---|
 | `regex` | `command`, `file_path`, `content`, `new_string` など | Python `re.search`（大文字小文字区別なし）|
 | `contains` | 同上 | 部分文字列（大文字小文字区別なし）|
+| `contains_any` | 同上 | `values` リスト内のいずれか1つを含む（大文字小文字区別なし）|
+| `contains_all` | 同上 | `values` リスト内の全てを含む（大文字小文字区別なし）|
 | `path_match` | `file_path` | fnmatch glob（`**` ワイルドカード対応）|
 
 ### ツール名とフィールドの対応
@@ -176,7 +183,7 @@ rules:
 ### ルールの追加例
 
 ```yaml
-# 例: 本番 DB への危険な SQL をブロック
+# 例: 本番 DB への危険な SQL をブロック（regex）
 - id: db_drop_table
   description: "DROP TABLE / DROP DATABASE の実行"
   action: block
@@ -186,7 +193,7 @@ rules:
       field: command
       pattern: "(?i)(DROP\\s+TABLE|DROP\\s+DATABASE|TRUNCATE\\s+TABLE)"
 
-# 例: 特定ファイルへのアクセスをログ記録
+# 例: 特定ファイルへのアクセスをログ記録（path_match）
 - id: log_config_read
   description: "本番設定ファイルの読み取りを記録"
   action: log
@@ -195,6 +202,26 @@ rules:
     - type: path_match
       field: file_path
       paths: ["**/production.yaml", "**/prod.json"]
+
+# 例: 危険なコマンドバリアントをまとめて検出（contains_any）
+- id: my_dangerous_commands
+  description: "危険なコマンドリスト"
+  action: block
+  tools: [Bash]
+  conditions:
+    - type: contains_any
+      field: command
+      values: ["rm -rf", "rm -fr", "rm -r -f"]
+
+# 例: 複数キーワードが全て揃った場合に検出（contains_all）
+- id: curl_pipe_shell
+  description: "curl をシェルにパイプして実行"
+  action: block
+  tools: [Bash]
+  conditions:
+    - type: contains_all
+      field: command
+      values: ["curl", "|", "bash"]
 ```
 
 ## ディレクトリ構成
@@ -203,7 +230,24 @@ rules:
 security-gate/
 ├── hook.py              # PreToolUse フックのエントリポイント
 ├── rule_engine.py       # ルール評価エンジン（RuleEngine / ConditionChecker / AuditLogger）
-├── rules.yaml           # ルール定義（47 件）
+├── rules.d/             # ルール定義（カテゴリ別 YAML）
+│   ├── settings.yaml        # グローバル設定（log_path）
+│   ├── 01_filesystem.yaml   # ファイルシステム破壊 (5)
+│   ├── 02_rce.yaml          # リモートコード実行 (4)
+│   ├── 03_privesc.yaml      # 権限昇格 (3)
+│   ├── 04_ai_attacks.yaml   # AI 固有攻撃・既存 (5)
+│   ├── 05_git.yaml          # Git 破壊操作 (3)
+│   ├── 06_secrets.yaml      # 機密ファイル読み取り (4)
+│   ├── 07_system.yaml       # システム停止 (3)
+│   ├── 08_network.yaml      # ネットワーク・リバースシェル (3)
+│   ├── 09_persistence.yaml  # パーシステンス (6)
+│   ├── 10_supply_chain.yaml # サプライチェーン攻撃 (3)
+│   ├── 11_exfil.yaml        # データ外部送信 (3)
+│   ├── 12_container.yaml    # コンテナ脱出 (4)
+│   ├── 13_bypass.yaml       # 難読化・バイパス (4)
+│   ├── 14_miner.yaml        # 暗号マイナー・偵察 (2)
+│   └── 15_ai_enhanced.yaml  # AI 固有攻撃・強化 (3)
+├── rules.yaml           # 旧ルール定義（参照用・エンジンは rules.d/ を使用）
 ├── tests/
 │   ├── test_rule_engine.py  # 単体テスト（ConditionChecker / RuleEngine / AuditLogger）
 │   └── test_hook.py         # 統合テスト（hook.py をサブプロセスで実行）
@@ -250,9 +294,9 @@ uv run pytest security-gate/tests/test_rule_engine.py -v
 ## トラブルシューティング
 
 **ルールを追加したのに反映されない**  
-`hook.py` は毎回 `rules.yaml` を読み直します（ホットリロード）。
-Claude Code セッションの再起動は不要です。ただし YAML 構文エラーがあると空のルールリストで動作します。
-`stderr` に `[security-gate] rules.yaml load error:` が出ていないか確認してください。
+`hook.py` は毎回 `rules.d/` 以下の全 YAML を読み直します（ホットリロード）。
+Claude Code セッションの再起動は不要です。ただし YAML 構文エラーがあると該当ファイルのルールがスキップされます。
+`stderr` に `[security-gate] NN_xxx.yaml load error:` が出ていないか確認してください。
 
 **正常なコマンドがブロックされる（誤検知）**  
 該当ルールの `enabled: false` を設定して無効化できます。

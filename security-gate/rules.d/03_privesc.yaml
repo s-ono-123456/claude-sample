@@ -1,0 +1,31 @@
+rules:
+
+  - id: privesc_sudo_shell
+    description: "sudo を使ったインタラクティブシェル取得"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: contains_any
+        field: command
+        values: ["sudo su", "sudo bash", "sudo sh", "sudo zsh", "sudo fish", "sudo dash", "sudo -i"]
+
+  - id: privesc_sudoers_edit
+    description: "sudoers ファイルの直接編集"
+    action: block
+    tools: [Bash, Write, Edit]
+    conditions:
+      - type: contains_any
+        field: command
+        values: ["visudo", "/etc/sudoers"]
+      - type: path_match
+        field: file_path
+        paths: ["/etc/sudoers", "/etc/sudoers.d/**"]
+
+  - id: privesc_ld_preload
+    description: "LD_PRELOAD による共有ライブラリ差し替え"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: contains
+        field: command
+        value: "LD_PRELOAD="

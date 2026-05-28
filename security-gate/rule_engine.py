@@ -1,4 +1,5 @@
 import fnmatch
+import glob
 import json
 import os
 import re
@@ -31,6 +32,16 @@ class ConditionChecker:
         return substring.lower() in value.lower()
 
     @staticmethod
+    def check_contains_any(value: str, substrings: list) -> bool:
+        v = value.lower()
+        return any(s.lower() in v for s in substrings)
+
+    @staticmethod
+    def check_contains_all(value: str, substrings: list) -> bool:
+        v = value.lower()
+        return all(s.lower() in v for s in substrings)
+
+    @staticmethod
     def check_path_match(value: str, patterns: list) -> bool:
         basename = os.path.basename(value)
         normalized = value.replace("\\", "/")
@@ -54,21 +65,37 @@ class RuleEngine:
         self._settings: dict = {}
 
     def load(self) -> None:
+        self._rules = []
+        self._settings = {}
+        if os.path.isdir(self.rules_path):
+            self._load_from_directory(self.rules_path)
+        else:
+            self._load_from_file(self.rules_path)
+
+    def _load_from_file(self, file_path: str) -> None:
         try:
-            with open(self.rules_path, encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-            self._rules = data.get("rules", [])
-            self._settings = data.get("settings", {})
+            with open(file_path, encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            self._rules.extend(data.get("rules", []))
+            if "settings" in data:
+                self._settings.update(data["settings"])
         except Exception as e:
-            print(f"[security-gate] rules.yaml load error: {e}", file=sys.stderr)
-            self._rules = []
-            self._settings = {}
+            print(f"[security-gate] {os.path.basename(file_path)} load error: {e}", file=sys.stderr)
+
+    def _load_from_directory(self, dir_path: str) -> None:
+        yaml_files = sorted(glob.glob(os.path.join(dir_path, "*.yaml")))
+        for fpath in yaml_files:
+            self._load_from_file(fpath)
 
     @property
     def log_path(self) -> str:
+        if os.path.isdir(self.rules_path):
+            base_dir = os.path.dirname(os.path.normpath(self.rules_path))
+        else:
+            base_dir = os.path.dirname(self.rules_path)
         return self._settings.get(
             "log_path",
-            os.path.join(os.path.dirname(self.rules_path), "log", "security.jsonl"),
+            os.path.join(base_dir, "log", "security.jsonl"),
         )
 
     def evaluate(self, tool_name: str, tool_input: dict) -> list[MatchResult]:
@@ -93,6 +120,10 @@ class RuleEngine:
                     matched = ConditionChecker.check_regex(value, condition.get("pattern", ""))
                 elif ctype == "contains":
                     matched = ConditionChecker.check_contains(value, condition.get("value", ""))
+                elif ctype == "contains_any":
+                    matched = ConditionChecker.check_contains_any(value, condition.get("values", []))
+                elif ctype == "contains_all":
+                    matched = ConditionChecker.check_contains_all(value, condition.get("values", []))
                 elif ctype == "path_match":
                     matched = ConditionChecker.check_path_match(value, condition.get("paths", []))
 

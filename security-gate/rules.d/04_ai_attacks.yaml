@@ -1,0 +1,61 @@
+rules:
+
+  - id: ai_attack_claude_md
+    description: "CLAUDE.md の改ざん（Write/Edit ツール経由）"
+    action: log
+    tools: [Write, Edit]
+    conditions:
+      - type: path_match
+        field: file_path
+        paths: ["**/CLAUDE.md", "**/claude.md"]
+
+  - id: ai_attack_settings_json
+    description: "Claude Code 設定ファイルの改ざん"
+    action: block
+    tools: [Write, Edit]
+    conditions:
+      - type: path_match
+        field: file_path
+        paths:
+          - "**/.claude/settings.json"
+          - "**/.claude/settings.local.json"
+
+  - id: ai_attack_hook_scripts
+    description: "フックスクリプト自体の改ざん（Write/Edit）"
+    action: log
+    tools: [Write, Edit]
+    conditions:
+      - type: path_match
+        field: file_path
+        paths:
+          - "**/hook.py"
+          - "**/rule_engine.py"
+          - "**/rules.d/**"
+          - "**/permissionrequest.py"
+          - "**/lib/precheck.py"
+          - "**/lib/mattermost.py"
+          - "**/lib/registry.py"
+
+  - id: ai_attack_hook_bash_overwrite
+    description: "Bash リダイレクトによるフック/設定ファイル上書き"
+    action: log
+    tools: [Bash, PowerShell]
+    conditions:
+      - type: regex
+        field: command
+        pattern: "(?i)(>|>>|tee\\s|Out-File|Set-Content).*(hook\\.py|rule_engine\\.py|permissionrequest\\.py)"
+      - type: regex
+        field: command
+        # .cursorrules（TrapDoor 攻撃ベクタ）も追加
+        pattern: "(?i)(>|>>|Out-File).*(\\.claude[/\\\\]settings|\\.claude[/\\\\]settings\\.local|CLAUDE\\.md|\\.cursorrules)"
+
+  - id: ai_attack_memory_write
+    description: "Claude Code メモリファイルの改ざん"
+    action: log
+    tools: [Write, Edit]
+    conditions:
+      - type: path_match
+        field: file_path
+        paths:
+          - "**/.claude/projects/**/memory/**"
+          - "**/.claude/projects/**/MEMORY.md"

@@ -1,0 +1,28 @@
+rules:
+
+  - id: network_reverse_shell_nc
+    description: "netcat を使ったリバースシェル"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: contains_all
+        field: command
+        values: ["nc", "-e", "sh"]
+
+  - id: network_reverse_shell_bash
+    description: "bash の TCP リダイレクトによるリバースシェル"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: contains_all
+        field: command
+        values: ["bash -i", "/dev/tcp/"]
+
+  - id: network_firewall_flush
+    description: "iptables/ufw によるファイアウォール無効化"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: contains_any
+        field: command
+        values: ["iptables -F", "ufw disable", "ufw reset"]

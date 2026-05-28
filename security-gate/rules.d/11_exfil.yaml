@@ -1,0 +1,31 @@
+rules:
+
+  - id: exfil_tar_pipe_curl
+    description: "tar アーカイブを curl で外部送信"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: contains_all
+        field: command
+        values: ["tar", "|", "curl"]
+
+  - id: exfil_history_curl
+    description: "シェル履歴を curl で外部送信"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: contains_all
+        field: command
+        values: ["history", "|", "curl"]
+
+  - id: exfil_find_exec_curl
+    description: "find コマンドで収集したファイルを curl で外部送信"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: contains_all
+        field: command
+        values: ["find", "-exec", "curl"]
+      - type: contains_all
+        field: command
+        values: ["find", "xargs", "curl"]

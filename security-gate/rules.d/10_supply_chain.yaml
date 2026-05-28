@@ -1,0 +1,29 @@
+rules:
+
+  - id: supply_chain_pip_trusted_host
+    description: "pip install --trusted-host による SSL 証明書検証スキップ"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: contains_all
+        field: command
+        values: ["pip", "--trusted-host"]
+
+  - id: supply_chain_pip_custom_index
+    description: "pip install で非公式インデックスを指定（サプライチェーン攻撃リスク）"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: regex
+        field: command
+        # pypi.org / files.pythonhosted.org 以外のインデックスを指定する場合のみブロック
+        pattern: "(?i)(pip|pip3|uv\\s+pip)\\s+(install|download)\\s+.*(--index-url|-i)\\s+https?://(?!(files\\.pythonhosted\\.org|pypi\\.org))"
+
+  - id: supply_chain_npm_registry
+    description: "npm install で非公式レジストリを指定（サプライチェーン攻撃リスク）"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: regex
+        field: command
+        pattern: "(?i)npm\\s+(install|i)\\s+.*--registry\\s+https?://(?!registry\\.npmjs\\.org)"

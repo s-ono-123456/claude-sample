@@ -1,0 +1,37 @@
+rules:
+
+  - id: bypass_eval_variable
+    description: "eval + シェル変数によるコマンド実行（難読化バイパス）"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: regex
+        field: command
+        pattern: "eval\\s+\\$[\\{\\(]?\\w"
+
+  - id: bypass_heredoc_bash
+    description: "ヒアドキュメントによる bash へのコマンド渡し（ログのみ）"
+    action: log
+    tools: [Bash]
+    conditions:
+      - type: contains_any
+        field: command
+        values: ["bash <<", "sh <<"]
+
+  - id: bypass_python_c_exec
+    description: "python -c でシステムコマンドやサブプロセスを実行"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: regex
+        field: command
+        pattern: "python[23]?\\s+-c\\s+['\"].*(__import__|os\\.system|subprocess|exec\\s*\\()"
+
+  - id: bypass_node_e_exec
+    description: "node -e で child_process を使ってシステムコマンドを実行"
+    action: block
+    tools: [Bash]
+    conditions:
+      - type: contains_all
+        field: command
+        values: ["node", "-e", "child_process"]
