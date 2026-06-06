@@ -46,6 +46,19 @@ volumes:
 
 ---
 
+## Ollama セットアップ（Windows ネイティブ）
+
+Ollama は Docker ではなく **Windows ネイティブ**で動作させる。Docker Compose の管理対象外。
+
+```powershell
+# https://ollama.com/download からインストーラーを取得してインストール後
+ollama pull qwen3-embedding:0.6b
+```
+
+Windows の Ollama はデフォルトで `http://localhost:11434` でリッスンする。WSL2 内の Neo4j とは異なり、ポートフォワードは不要（Python スクリプトから直接アクセス可能）。
+
+---
+
 ## 起動手順
 
 ```bash

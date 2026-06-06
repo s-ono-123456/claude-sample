@@ -122,6 +122,7 @@ long-memory/
   },
   "memory": {
     "top_k_vector": 20,
+    "top_k_fulltext": 10,
     "top_k_graph_expand": 30,
     "top_k_inject": 10,
     "graph_depth": 2,

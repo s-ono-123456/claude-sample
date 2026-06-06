@@ -125,7 +125,7 @@ Step 1a: ベクトル検索（意味的類似）
   クエリ Embedding → memory_embedding_index → 上位 20 件（ベクトルスコア付き）
 
 Step 1b: 全文検索（文字列一致）
-  クエリ → fugashi 形態素解析 → memory_token_index → 上位 10 件（全文スコア付き）
+  クエリ → fugashi 形態素解析 → memory_token_index → 上位 top_k_fulltext 件（全文スコア付き、デフォルト 10）
   ※ 固有名詞・ファイルパス・コマンド名など、ベクトル検索が苦手な語に補完的に使用
 
 Step 1 マージ: 両結果を統合・重複排除（最大 30 件程度）
@@ -307,13 +307,20 @@ timeScore =
 | 矛盾する decision が複数 | 競合（LLM判定） | 最新を `active` に残し古いものを `inactive` に |
 | 無関係に見えて共通テーマがある | 無関係（LLM判定） | スキップ |
 
-**候補抽出フロー（Embedding + Entity の重なり）:**
+**候補抽出フロー（Step1: --project + --plan-output）:**
 ```
 1. Embedding cosine ≥ 0.7 の Memory ペアを全て列挙
 2. 各ペアの共通 Entity 数を計算（CO_OCCURS_WITH で接続されている Entity を含む）
 3. 共通 Entity が多いペアを優先して LLM 判定キューに投入
-4. LLM が「類似 / 競合 / 無関係」を判定 → 類似・競合のみ処理
-5. 変更内容をユーザーに報告（誤判定の確認用）
+4. LLM が「類似 / 競合 / 無関係」を判定 → 判定結果を --plan-output で指定した JSON に保存
+5. JSON 内容を stdout に表示して終了（この時点では Neo4j への書き込みなし）
+```
+
+**適用（Step2: --apply）:**
+```
+・ユーザーが JSON を確認後 --apply <file> で実行
+・JSON の判定結果をそのまま適用（LLM 再呼び出しなし）
+・変更件数を stdout にレポート出力 ＋ JSON ファイルを削除
 ```
 
 **発火タイミング:** 手動スキル呼び出し（フックによる自動実行なし）。decision の蓄積量が増えてからまとめて整理する方が効率的なため、毎 PreCompact で自動実行はしない。
@@ -342,7 +349,7 @@ Step 1a: ベクトル検索（意味的類似）
   クエリ Embedding → memory_embedding_index → 上位 20 件の Memory（ベクトルスコア付き）
 
 Step 1b: 全文検索（文字列一致）
-  クエリを fugashi で形態素解析 → memory_token_index → 上位 10 件の Memory（全文スコア付き）
+  クエリを fugashi で形態素解析 → memory_token_index → 上位 top_k_fulltext 件の Memory（全文スコア付き、デフォルト 10）
   ※ 固有名詞・ファイルパス・コマンド名など、ベクトル検索が苦手な語に補完的に使用
 
 Step 1 マージ: 両結果を統合・重複排除（最大 30 件程度）
@@ -364,6 +371,7 @@ Step 3: スコアリング統合
 
 ```cypher
 -- Step 1: ベクトル検索で近傍 Memory を取得
+-- $graphDepth = config.json の memory.graph_depth（デフォルト 2）
 CALL db.index.vector.queryNodes('memory_embedding_index', 20, $queryEmbedding)
 YIELD node AS seedMemory, score AS vecScore
 WHERE seedMemory.status = 'active'
@@ -371,7 +379,7 @@ MATCH (seedMemory)-[:BELONGS_TO]->(:Session)-[:IN_PROJECT]->(:Project {path: $pr
 
 -- Step 2: グラフ拡張（OPTIONAL MATCH で関連 Memory を収集）
 OPTIONAL MATCH (seedMemory)-[:MENTIONS]->(e:Entity)
-  -[:CO_OCCURS_WITH*1..2]-(re:Entity)
+  -[:CO_OCCURS_WITH*1..$graphDepth]-(re:Entity)
   <-[:MENTIONS]-(relatedMemory:Memory)
   -[:BELONGS_TO]->(:Session)-[:IN_PROJECT]->(:Project {path: $project})
 WHERE relatedMemory <> seedMemory AND relatedMemory.status = 'active'
@@ -414,7 +422,7 @@ WHERE m.status = 'active'
 MATCH (m)-[:BELONGS_TO]->(:Session)-[:IN_PROJECT]->(:Project {path: $project})
 RETURN m, score
 ORDER BY score DESC
-LIMIT 10
+LIMIT $topKFulltext  -- config.json の memory.top_k_fulltext
 ```
 
 ```cypher

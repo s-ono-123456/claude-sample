@@ -43,14 +43,15 @@ flowchart TB
         H3["スキル（能動検索）"]
     end
 
-    subgraph Infra["インフラ（WSL2 Docker）"]
-        direction LR
-        Ollama["Ollama API\nqwen3-embedding:0.6b (1024 dim, 多言語)"]
+    Ollama["Ollama API（Windows ネイティブ）\nqwen3-embedding:0.6b (1024 dim, 多言語)"]
+
+    subgraph Docker["WSL2 Docker"]
         Neo4j["Neo4j\nベクトルインデックス / グラフ構造\nMemory・Entity ノード"]
     end
 
-    CC -->|"保存"| Infra
-    Infra -->|"検索結果"| CC
+    CC -->|"テキスト → Embedding"| Ollama
+    CC -->|"保存 / 検索"| Neo4j
+    Neo4j -->|"検索結果"| CC
 ```
 
 ### フックの役割分担

@@ -117,8 +117,10 @@ Claude Code の 1 会話セッションに対応するコンテナノード。�
 ### CO_OCCURS_WITH
 
 ```
-(Entity)-[:CO_OCCURS_WITH {count: int, strength: float}]->(Entity)
+(Entity)-[:CO_OCCURS_WITH {count: int, strength: float}]-(Entity)
 ```
+
+> **方向性:** Neo4j では関係に必ず方向が必要なため、保存時は任意の方向（`->`）で作成する。検索クエリでは無向パターン（`-[:CO_OCCURS_WITH]-`）を使い、双方向に辿れるようにする。
 
 | プロパティ | 型 | 取りうる値 | 説明 |
 |---|---|---|---|
@@ -207,30 +209,26 @@ FOR (m:Memory) ON EACH [m.content_tokens];
 
 ## 4. グラフ構造例
 
+```mermaid
+graph LR
+    P["**Project**<br/>path='C:/claude'"]
+    S["**Session**<br/>id='abc-123'"]
+    M1["**Memory** (knowledge)<br/>'Neo4j にベクトルインデックスを作成した'"]
+    E1["**Entity**<br/>'Neo4j'"]
+    E2["**Entity**<br/>'ベクトルインデックス'"]
+    E3["**Entity**<br/>'Embedding'"]
+    M2["**Memory**<br/>'Ollama で qwen3-embedding:0.6b を使った'"]
+
+    M1 -->|BELONGS_TO| S
+    S -->|IN_PROJECT| P
+    M1 -->|MENTIONS| E1
+    M1 -->|MENTIONS| E2
+    E1 ---|CO_OCCURS_WITH| E2
+    E2 ---|CO_OCCURS_WITH| E3
+    M2 -->|MENTIONS| E3
 ```
-[Project: path="C:/claude"]
-     ↑
-     IN_PROJECT
-     │
-[Session: id="abc-123"]
-     ↑
-     BELONGS_TO
-     │
-[Memory: "Neo4j にベクトルインデックスを作成した" (knowledge)]
-     │
-     ├──MENTIONS──→ [Entity: "Neo4j"]
-     │                   │
-     │                   └──CO_OCCURS_WITH──→ [Entity: "ベクトルインデックス"]
-     │
-     └──MENTIONS──→ [Entity: "ベクトルインデックス"]
-                         │
-                         └──CO_OCCURS_WITH──→ [Entity: "Embedding"]
-                                                   │
-                                             MENTIONS 逆引き
-                                                   ↓
-                                        [Memory: "Ollama で qwen3-embedding:0.6b を使った"]
-                                        ← ベクトル類似度が低くても関連する記憶として取得できる
-```
+
+> M1 と M2 はベクトル類似度が低くても、Entity チェーン（Neo4j → ベクトルインデックス → Embedding）を介したグラフ拡張により関連記憶として取得できる。
 
 ---
 

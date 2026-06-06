@@ -204,7 +204,7 @@ uv run python long-memory/scripts/memory_cleanup.py --apply cleanup_plan.json
 
 1. 対象 Project の全 Memory を取得（`status = 'active'`）
 2. Embedding cosine ≥ threshold の Memory ペアを列挙（`neo4j_client.py` を利用）
-3. 各ペアの共通 Entity 数を計算し、共通 Entity が多い順にソート
+3. 各ペアの共通 Entity 数を計算（直接 MENTIONS している Entity に加え、CO_OCCURS_WITH で接続された隣接 Entity も含む）し、共通 Entity が多い順にソート
 4. Haiku に候補ペアを渡して「類似 / 競合 / 無関係」を分類
 5. 判定結果を JSON ファイルに保存し、内容を stdout に表示して終了
 
