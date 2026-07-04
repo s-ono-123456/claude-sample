@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.testsampleapp.dao.ProductDao">
+
+    <resultMap id="productResultMap" type="com.example.testsampleapp.model.Product">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="category" column="category"/>
+        <result property="unitPrice" column="unit_price"/>
+        <result property="weightGram" column="weight_gram"/>
+        <result property="taxIncludedFlag" column="tax_included_flag"/>
+    </resultMap>
+
+    <select id="findById" parameterType="int" resultMap="productResultMap">
+        SELECT id, name, category, unit_price, weight_gram, tax_included_flag
+        FROM products
+        WHERE id = #{id}
+    </select>
+
+</mapper>

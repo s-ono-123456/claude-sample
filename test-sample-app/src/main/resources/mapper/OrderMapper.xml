@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.testsampleapp.dao.OrderDao">
+
+    <resultMap id="orderResultMap" type="com.example.testsampleapp.model.Order">
+        <id property="id" column="id"/>
+        <result property="customerId" column="customer_id"/>
+        <result property="orderDate" column="order_date"/>
+        <result property="couponCode" column="coupon_code"/>
+        <result property="paymentMethod" column="payment_method"/>
+        <result property="status" column="status"/>
+        <result property="customerName" column="customer_name"/>
+        <result property="memberRank" column="member_rank"/>
+    </resultMap>
+
+    <resultMap id="couponResultMap" type="com.example.testsampleapp.model.Coupon">
+        <id property="code" column="code"/>
+        <result property="discountType" column="discount_type"/>
+        <result property="discountValue" column="discount_value"/>
+        <result property="validFrom" column="valid_from"/>
+        <result property="validTo" column="valid_to"/>
+    </resultMap>
+
+    <select id="search" parameterType="com.example.testsampleapp.model.OrderSearchCriteria" resultMap="orderResultMap">
+        SELECT o.id, o.customer_id, o.order_date, o.coupon_code, o.payment_method, o.status,
+               c.name AS customer_name, c.member_rank AS member_rank
+        FROM orders o
+        JOIN customers c ON c.id = o.customer_id
+        <where>
+            <if test="customerName != null and customerName != ''">
+                AND c.name LIKE CONCAT('%', #{customerName}, '%')
+            </if>
+            <if test="orderDateFrom != null">
+                AND o.order_date &gt;= #{orderDateFrom}
+            </if>
+            <if test="orderDateTo != null">
+                AND o.order_date &lt;= #{orderDateTo}
+            </if>
+            <if test="memberRank != null and memberRank != ''">
+                AND c.member_rank = #{memberRank}
+            </if>
+        </where>
+        ORDER BY o.order_date DESC
+    </select>
+
+    <select id="findById" parameterType="int" resultMap="orderResultMap">
+        SELECT o.id, o.customer_id, o.order_date, o.coupon_code, o.payment_method, o.status,
+               c.name AS customer_name, c.member_rank AS member_rank
+        FROM orders o
+        JOIN customers c ON c.id = o.customer_id
+        WHERE o.id = #{id}
+    </select>
+
+    <select id="findCouponByCode" parameterType="string" resultMap="couponResultMap">
+        SELECT code, discount_type, discount_value, valid_from, valid_to
+        FROM coupons
+        WHERE code = #{code}
+    </select>
+
+</mapper>

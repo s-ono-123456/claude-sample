@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.testsampleapp.dao.CustomerDao">
+
+    <resultMap id="customerResultMap" type="com.example.testsampleapp.model.Customer">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="memberRank" column="member_rank"/>
+        <result property="birthMonth" column="birth_month"/>
+        <result property="region" column="region"/>
+        <result property="firstOrderFlag" column="first_order_flag"/>
+        <result property="registeredAt" column="registered_at"/>
+    </resultMap>
+
+    <select id="findById" parameterType="int" resultMap="customerResultMap">
+        SELECT id, name, member_rank, birth_month, region, first_order_flag, registered_at
+        FROM customers
+        WHERE id = #{id}
+    </select>
+
+</mapper>

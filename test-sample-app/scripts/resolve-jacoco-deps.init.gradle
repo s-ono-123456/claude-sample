@@ -1,0 +1,41 @@
+allprojects {
+    afterEvaluate { proj ->
+        proj.tasks.register("printTestClasspath") {
+            doLast {
+                println "TESTCP_START"
+                println proj.configurations.testRuntimeClasspath.files.join(System.getProperty("path.separator"))
+                println "TESTCP_END"
+            }
+        }
+        proj.tasks.register("resolveJunitConsole") {
+            doLast {
+                def dep = proj.dependencies.create("org.junit.platform:junit-platform-console-standalone:1.8.2")
+                def files = proj.configurations.detachedConfiguration(dep).resolve()
+                println "JUNITCONSOLE_START"
+                println files.join(System.getProperty("path.separator"))
+                println "JUNITCONSOLE_END"
+            }
+        }
+        proj.tasks.register("resolveJacocoAgent") {
+            doLast {
+                def dep = proj.dependencies.create("org.jacoco:org.jacoco.agent:0.8.11:runtime")
+                def files = proj.configurations.detachedConfiguration(dep).resolve()
+                println "JACOCOAGENT_START"
+                println files.join(System.getProperty("path.separator"))
+                println "JACOCOAGENT_END"
+            }
+        }
+        proj.tasks.register("resolveJacocoCli") {
+            doLast {
+                // nodeps 版は依存(asm/args4j等)が同梱されていないため、
+                // detachedConfiguration で解決した全jarをクラスパスとして使う
+                // (java -jar ではなく -cp + メインクラス指定で起動する)
+                def dep = proj.dependencies.create("org.jacoco:org.jacoco.cli:0.8.11:nodeps")
+                def files = proj.configurations.detachedConfiguration(dep).resolve()
+                println "JACOCOCLI_START"
+                println files.join(System.getProperty("path.separator"))
+                println "JACOCOCLI_END"
+            }
+        }
+    }
+}
