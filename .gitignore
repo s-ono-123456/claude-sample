@@ -24,8 +24,15 @@ retro/
 
 ast-analyzer/config.yaml
 
+aircon-comfort-control/.env
+
 # Maven build artifacts
 ast-analyzer/sample-app/target/
+
+# Gradle build artifacts
+test-sample-app/.gradle/
+test-sample-app/bin/
+test-sample-app/bootrun.log
 
 # MSYS2/Git Bash crash dumps
 *.stackdump

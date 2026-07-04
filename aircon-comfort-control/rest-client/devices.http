@@ -1,0 +1,18 @@
+### SwitchBot OpenAPI v1.1 - GET /v1.1/devices
+### 使い方:
+### 1. `powershell -File aircon-comfort-control\rest-client\gen_signature.ps1` を実行する
+### 2. 出力された @token / @t / @nonce / @sign の値を下の変数欄に貼り付ける（t/nonce/sign は毎回再生成が必要）
+### 3. GET リクエストの上に表示される "Send Request" をクリックする
+
+@token = 587d55536f6994416c2ab927a18f2402f4a1558584a86fce101e59f635998dc3cd6a907a4c2410658a0ad924a5aace16
+@t = 1783138031461
+@nonce = e76c640a-b76a-444b-8779-eb76bad01b46
+@sign = +78koYZfj9PeMOgSKxTlXimao7DriPNIGK++jgwS7Q0=
+
+GET https://api.switch-bot.com/v1.1/devices
+Authorization: {{token}}
+sign: {{sign}}
+t: {{t}}
+nonce: {{nonce}}
+Content-Type: application/json
+charset: utf8
