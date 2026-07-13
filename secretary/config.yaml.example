@@ -1,0 +1,53 @@
+# secretary 設定ファイル
+# このファイルを config.yaml にコピーして環境に合わせて記入すること
+#   Copy-Item secretary\config.yaml.example secretary\config.yaml
+
+# ---------------------------------------------------------------
+# Collector: アクティブウィンドウ収集の許可リスト
+#   マッチしないウィンドウは「記録すらしない」（プライバシー原則）
+#   process: プロセス名（完全一致・小文字）
+#   title_pattern: ウィンドウタイトルの正規表現（省略時は全タイトル許可）
+# ---------------------------------------------------------------
+collector:
+  poll_interval_seconds: 10
+  allowlist:
+    - process: code.exe            # VSCode
+    - process: chrome.exe
+      title_pattern: "(Jira|Confluence|GitHub)"
+    - process: msedge.exe
+      title_pattern: "(Jira|Confluence|GitHub)"
+    - process: mattermost.exe
+    - process: windowsterminal.exe
+
+# ---------------------------------------------------------------
+# snapshot_builder: 収集ソース
+# ---------------------------------------------------------------
+sources:
+  # Claude Code セッションログのルート（省略時 ~/.claude/projects）
+  claude_projects_dir: null
+  # 監視対象 git リポジトリ（絶対パス）
+  git_repos:
+    - C:\claude
+  # スナップショットに含めるウィンドウイベントの上位件数（滞在時間順）
+  window_top_n: 15
+
+# ---------------------------------------------------------------
+# Worker 実行（Orchestrator 側の設定。ClaudeAgentOptions は worker/worker-config.yaml）
+# ---------------------------------------------------------------
+worker:
+  image: secretary-worker:latest
+  wsl_distro: Ubuntu-24.04
+  docker_network: secretary_internal      # docker/docker-compose.yml が作る internal ネットワーク
+  egress_proxy: http://secretary-egress-proxy:8888
+  # ANTHROPIC_API_KEY を保管した Windows Credential Manager のサービス名/ユーザー名
+  anthropic_key_service: secretary-anthropic
+  anthropic_key_username: api-key
+  # ホスト側共有ディレクトリ（Worker が rw マウントできる唯一の場所）
+  shared_dir: C:\claude\secretary-workspace
+
+# ---------------------------------------------------------------
+# Mattermost 投稿（url/token は mattermost-gate/config.json を流用）
+# ---------------------------------------------------------------
+mattermost:
+  gate_config: C:\claude\mattermost-gate\config.json
+  channel_id: "your-secretary-channel-id"   # 秘書専用チャンネルの ID

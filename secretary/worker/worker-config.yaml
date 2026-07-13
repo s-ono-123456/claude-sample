@@ -1,0 +1,32 @@
+# Worker（ClaudeAgentOptions）の設定 — :ro マウントで /config/worker-config.yaml に注入される
+# ここを変更してもイメージの再ビルドは不要
+
+model: null                # null = Claude Code の既定モデル
+max_turns: 30
+allowed_tools: [Read, Write, Glob, Grep]   # Bash は Phase 1 では許可しない
+permission_mode: bypassPermissions
+system_prompt_file: /config/system_prompt.md
+cwd: /snapshot
+timeout_minutes: 15        # 超過時は run_worker.py が docker kill する
+
+# Phase 2: secretary-gateway（MCP）を使う場合はここに追記し、
+# allowed_tools に mcp__gateway__* を追加する
+# mcp_servers:
+#   gateway:
+#     type: http
+#     url: http://secretary-gateway:8080/mcp
+
+# ジョブ指示（{job_id} は実行時に置換される）
+job_prompt: |
+  /snapshot 以下にユーザーの最近の作業コンテキストが入っている。
+  まず /snapshot/diff-summary.md を読み、続行する価値があるか判断せよ。
+
+  続行しない場合:
+    /shared/{job_id}/summary.json に {"action": "none", "reason": "<理由1行>"} を書いて即終了。
+
+  続行する場合:
+    context/ 以下を読み、ユーザーが今取り組んでいることに対して先回りできる
+    参考資料（調査メモ・レビュー観点・下書き等）を1つ作成し、
+    /shared/{job_id}/report.md に書く。最後に /shared/{job_id}/summary.json へ
+    {"action": "report", "title": "<成果の一言タイトル>", "reason": "<なぜ役立つか1行>", "files": ["report.md"]}
+    を書いて終了せよ。

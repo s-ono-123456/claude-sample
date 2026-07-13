@@ -1,0 +1,24 @@
+# secretary 常駐コンテナ（WSL2 Ubuntu-24.04 上の Docker で起動）
+#   wsl -d Ubuntu-24.04 -- bash -c "cd /mnt/c/claude/secretary/docker && docker compose up -d --build"
+#
+# Worker は都度 docker run で secretary_internal ネットワークに参加する。
+# internal ネットワークからの外部到達は egress-proxy（許可リスト）経由のみ。
+
+services:
+  egress-proxy:
+    build: ./egress-proxy
+    container_name: secretary-egress-proxy
+    restart: unless-stopped
+    networks:
+      - secretary_internal
+      - egress
+    volumes:
+      - ./tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf:ro
+      - ./egress-allowlist.txt:/etc/tinyproxy/egress-allowlist.txt:ro
+
+networks:
+  secretary_internal:
+    name: secretary_internal
+    internal: true          # このネットワーク単体では外部に出られない
+  egress:
+    name: secretary_egress  # proxy だけが外向き経路を持つ
